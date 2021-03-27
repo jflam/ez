@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+# Script to provision a GPU machine
+# This script will be copied to an Azure GPU VM via scp and executed via ssh
+
+set -o nounset   # fail on uninitialized variable references
+
+# These next two options should likely be turned on only in debug mode
+
+set -o errexit   # exit on error on commands -- probably should do this only in debug mode
+set -o pipefail  # exit status of last command that threw non-zero exit code is returned
+
+# Script (manual commands that I typed in -- will clean up later)
+sudo apt update
+sudo apt upgrade -y
+sudo apt install build-essential -y
+
+# Install CUDA - note that this will need to be updated on a per-version basis?
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-ubuntu1804.pin
+sudo mv cuda-ubuntu1804.pin /etc/apt/preferences.d/cuda-repository-pin-600
+sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub
+sudo add-apt-repository "deb http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/ /"
+sudo apt-get update
+sudo apt-get -y install cuda
+
+# Install Docker
+sudo apt-get install \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg-agent \
+    software-properties-common -y
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+
+# Enable docker to run under a non superuser account
+sudo gpasswd -a $USER docker
+newgrp docker
+
+# Install NVIDIA Container Runtime
+curl -s -L https://nvidia.github.io/nvidia-container-runtime/gpgkey | \
+  sudo apt-key add -
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-container-runtime/$distribution/nvidia-container-runtime.list | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
+sudo apt-get update
+sudo apt-get install nvidia-container-runtime -y
+sudo systemctl restart docker
+
+# Install miniconda for all users (because this will become an image later)
+mkdir ~/tmp; cd ~/tmp
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+sudo bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
+
+# enable non-su access to miniconda
+sudo groupadd miniconda-users
+sudo chgrp -R miniconda-users /opt/miniconda
+sudo chmod 770 -R /opt/miniconda 
+sudo gpasswd -a $USER miniconda-users
+newgrp miniconda-users
+
+# Initialize conda
+eval "$(/opt/miniconda/bin/conda shell.bash hook)"
+conda init 
+
+# Install jupyter-repo2docker
+pip install jupyter-repo2docker
+
+# Not sure why this is needed but missing dependency in jupyter-repo2docker somehow?
+pip install ruamel.yaml

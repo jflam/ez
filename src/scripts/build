@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+
+# Build a container image on the VM. The container image is created the first time
+# this script is executed by the jupyter-repo2docker tool. The layers for the image
+# will be cached on the local disk of the VM resulting in much faster startup times
+# for subsequent invocations of the command.
+
+# The container name is the same as the environment name. When the container is 
+# terminated by the client, the container image is force stopped and removed.
+
+# The github repo that provides the definition of the container image contents
+# is optionally cloned onto the VM and then mounted onto the VM.
+
+set -o nounset   # fail on uninitialized variable references
+
+# These next two options should likely be turned on only in debug mode
+
+set -o errexit   # exit on error on commands -- probably should do this only in debug mode
+set -o pipefail  # exit status of last command that threw non-zero exit code is returned
+
+port="8888"
+user_id="1000"
+env_name=""
+git_repo=""
+user_name="jupyter"
+user_interface="notebook" # TODO: remove - this is not used!
+patch_file="" 
+repo_path=""
+git_clone=1
+gpu=1
+
+# Parse command line arguments
+
+while (( $# > 0 )); do
+    case $1 in 
+        -n | --env-name )           shift
+                                    env_name=$1
+                                    ;;
+        -g | --git-repo )           shift 
+                                    git_repo=$1
+                                    ;;
+        -p | --port )               shift 
+                                    port=$1
+                                    ;;
+        -u | --user-interface )     shift 
+                                    user_interface=$1
+                                    ;;
+        -a | --user-name )          shift
+                                    user_name=$1
+                                    ;;
+        -r | --repo-path )          shift
+                                    repo_path=$1
+                                    ;;
+        -c | --git-clone )          git_clone=0
+                                    ;;
+        --gpu )                     gpu=0
+                                    ;;
+        -f | --patch-file )         shift
+                                    patch_file=$1
+                                    ;;
+    esac 
+    shift
+done 
+
+echo "  ${user_name}@$(hostname): VALIDATING command line arguments"
+
+if [ "$env_name" == "" ]; then
+    echo "missing mandatory parameter --env-name"
+    exit 1
+fi
+
+if [ "$git_repo" == "" ]; then
+    echo "missing mandatory parameter --git-repo"
+    exit 1
+fi
+
+if [ "$port" == "" ]; then
+    echo "missing mandatory parameter --port"
+    exit 1
+fi
+
+# workaround for conda bug: https://github.com/conda/conda/issues/8186
+
+export PS1=
+
+# Activate conda
+
+echo "  ${user_name}@$(hostname): ACTIVATING conda"
+
+eval "$(/opt/miniconda/bin/conda shell.bash hook)" 
+conda init > /dev/null
+
+if [[ $repo_path == "" ]]; then
+    repo_path="./repo"
+
+    # Remote builds do not pass in a --repo-path parameter
+    # Remote builds will clone the git repo into ~/easy/env/$env_name/repo directory
+
+    mkdir -p ~/easy/env/$env_name 
+    cd ~/easy/env/$env_name
+
+    if [ ! -d repo ]; then 
+        echo "${user_name}@$(hostname): CLONING ${git_repo}"
+        git clone $git_repo $repo_path
+    else
+        if [[ $git_clone == 0 ]]; then
+            rm -rf $repo_path 
+            git clone $git_repo $repo_path
+        fi
+    fi
+fi
+
+# Apply patch file if caller passed a reference to the file
+if [[ $patch_file != "" ]]; then
+    echo "  ${user_name}@$(hostname): APPLYING patchfile ${patch_file}"
+    cd ~/easy/env/$env_name/repo
+    git apply /home/$user_name/tmp/${patch_file}
+    cd ~/easy/env/$env_name
+fi
+
+# If we are running on a GPU-powered VM, we must install CUDA into the container using the appendix feature of repo2docker
+
+echo "  ${user_name}@$(hostname): BUILDING container image using repo2docker"
+if [ $gpu -eq 0 ]; then
+
+    printf "\nINSTALLING CUDA into the container image image\n"
+
+    # TODO: Note that I'm burning a specific version of CUDA in here - need to make this updateable in the future
+    # TODO: IS THIS NOT NEEDED NOW IN CURRENT VERSIONS OF DOCKER??????
+    # Experiment is to provision a new NC6 and see if the CPU path continues to work
+
+    cat << 'EOF' > /tmp/appendix
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+gnupg2 curl ca-certificates && \
+curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub | apt-key add - && \
+echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
+echo "deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64 /" > /etc/apt/sources.list.d/nvidia-ml.list && \
+apt-get purge --autoremove -y curl && \
+rm -rf /var/lib/apt/lists/*
+
+ENV CUDA_VERSION 10.2.89
+
+ENV CUDA_PKG_VERSION 10-2=$CUDA_VERSION-1
+
+# For libraries in the cuda-compat-* package: https://docs.nvidia.com/cuda/eula/index.html#attachment-a
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cuda-cudart-$CUDA_PKG_VERSION \
+cuda-compat-10-2 && \
+ln -s cuda-10.2 /usr/local/cuda && \
+rm -rf /var/lib/apt/lists/*
+
+# Required for nvidia-docker v1
+RUN echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
+echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+# nvidia-container-runtime
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV NVIDIA_REQUIRE_CUDA "cuda>=10.2 brand=tesla,driver>=384,driver<385 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411 brand=tesla,driver>=418,driver<419"
+EOF
+    # TODO: fix user-id 1000 and ./repo (path needs to be explicitly passed into this build script)
+    # jupyter-repo2docker --no-run --target-repo-dir /home/$admin_username/notebooks --image-name $env_name --user-id 1000 --user-name $admin_username --appendix="`cat /tmp/appendix`" ./repo 
+
+    echo "  ${user_name}@$(hostname): BUILDING GPU container image using repo2docker:"
+    jupyter-repo2docker --no-run --image-name $env_name --user-id $user_id --user-name $user_name --appendix="`cat /tmp/appendix`" $repo_path
+else 
+    # TODO: remove this too
+    # jupyter-repo2docker --no-run --target-repo-dir /home/$admin_username/notebooks --image-name $env_name --user-id 1000 --user-name $admin_username $repo_path
+
+    echo "  ${user_name}@$(hostname): BUILDING CPU container image using repo2docker:"
+    jupyter-repo2docker --no-run --image-name $env_name --user-id $user_id --user-name $user_name $repo_path
+fi
+exit 0

@@ -1,0 +1,66 @@
+#! /home/jlam/anaconda3/envs/jupyter/bin/python
+
+import click
+from settings import ez_settings
+
+# Import sub-commands
+import workspace_commands
+import vm_commands
+import env_commands
+
+# workspace sub-commands
+
+@click.group()
+def workspace():
+    """Manage workspaces"""
+    pass
+
+workspace.add_command(workspace_commands.create)
+workspace.add_command(workspace_commands.delete)
+workspace.add_command(workspace_commands.ls)
+
+# vm sub-commands
+
+@click.group()
+def vm():
+    """Manage virtual machines"""
+    pass
+
+vm.add_command(vm_commands.create)
+vm.add_command(vm_commands.delete)
+vm.add_command(vm_commands.ls)
+vm.add_command(vm_commands.start)
+vm.add_command(vm_commands.stop)
+vm.add_command(vm_commands.select)
+vm.add_command(vm_commands.info)
+vm.add_command(vm_commands.ssh)
+
+# environment sub-commands
+
+@click.group()
+def env():
+    """Manage environments"""
+    pass
+
+env.add_command(env_commands.run)
+env.add_command(env_commands.ls)
+env.add_command(env_commands.cp)
+env.add_command(env_commands.ssh)
+env.add_command(env_commands.stop)
+env.add_command(env_commands.up)
+
+# ez top-level command
+
+@click.group()
+@click.option("--debug", is_flag=True, help="Output diagnostic information")
+@click.option("--trace", is_flag=True, help="Trace execution")
+def main(debug, trace):
+    """Command-line interface for creating and using portable Python environments"""
+    pass
+
+main.add_command(workspace)
+main.add_command(vm)
+main.add_command(env)
+
+if __name__ == "__main__":
+    main()
