@@ -22,8 +22,8 @@ def exec_script_using_ssh(ez, script_name, vm_name, cmd=""):
 
 def exec_command(ez, command):
     """Shell execute command and capture output. Returns a tuple of (return
-    value, output). If --trace set globally then just display commands but don't
-    actually execute."""
+    value, output). If --trace set globally then just display commands but
+    don't actually execute."""
     if not ez.logged_in:
         ez.logged_in = True 
         login()
@@ -34,9 +34,11 @@ def exec_command(ez, command):
     else:
         try:
             # TODO: make this incremental char/line at a time
-            output = subprocess.check_output(command, 
-                                                stderr=subprocess.STDOUT, 
-                                                shell=True).decode(sys.stdout.encoding)
+            output = (
+                subprocess.check_output(command, 
+                                        stderr=subprocess.STDOUT, 
+                                        shell=True)
+                                        .decode(sys.stdout.encoding))
             if ez.debug:
                 print(f"DEBUG: {command}")
                 print(f"OUTPUT: {output}")
@@ -91,7 +93,8 @@ def is_gpu(vm_size):
 
 def is_vm_running(ez, vm_name) -> bool:
     is_running = (
-        f"az vm list -d -o table --query \"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
+        f"az vm list -d -o table --query "
+        f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
         f"grep \"VM running\" > /dev/null"
     )
     exit_code, _ = exec_command(ez, is_running)
@@ -109,8 +112,14 @@ def jit_activate_vm(ez, vm_name) -> None:
     print(f"CHECKING if virtual machine {vm_name} is running")
     if not is_vm_running(ez, vm_name):
         ez.debug_print(f"STARTING virtual machine {vm_name}")
-        exec_command(ez, f"az vm start --name {vm_name} --resource-group {resource_group}")
-        exec_command(ez, f"az vm wait --name {vm_name} --resource-group {resource_group} --updated")
+        start_vm_cmd = (
+            f"az vm start --name {vm_name} "
+            f"--resource-group {resource_group}")
+        wait_vm_cmd = (
+            f"az vm wait --name {vm_name} "
+            f"--resource-group {resource_group} --updated")
+        exec_command(ez, start_vm_cmd)
+        exec_command(ez, wait_vm_cmd)
     else:
         ez.debug_print(f"ALREADY RUNNING virtual machine {vm_name}")
 
@@ -119,7 +128,8 @@ def jit_activate_vm(ez, vm_name) -> None:
     # Get local machine IP address for JIT activation
 
     ez.debug_print(f"GETTING local IP address...")
-    exit_code, local_ip_address = exec_command(ez, "curl -k -s https://ifconfig.me/ip")
+    get_my_ip_cmd = "curl -k -s https://ifconfig.me/ip"
+    exit_code, local_ip_address = exec_command(ez, get_my_ip_cmd)
     exit_on_error(exit_code, local_ip_address)
     ez.debug_print(f"RESULT: local IP address {local_ip_address}")
 
@@ -176,7 +186,8 @@ def get_vm_size(ez, vm_name):
     """Return the VM size of vm_name"""
     vm_name = ez.get_active_vm_name(vm_name)
     info_cmd = (
-        f"az vm get-instance-view --name {vm_name} --resource-group {ez.resource_group} "
+        f"az vm get-instance-view --name {vm_name} "
+        f"--resource-group {ez.resource_group} "
         f"--query hardwareProfile.vmSize -o tsv"
     )
     exit_code, vm_size = exec_command(ez, info_cmd)
