@@ -1,7 +1,6 @@
 # Utility functions for working with Azure
 
 from os import system
-from settings import ez_settings
 import json
 import shlex
 import subprocess
@@ -10,13 +9,13 @@ import sys
 def exec_script_using_ssh(ez, script_name, vm_name, cmd=""):
     """Execute script_name on vm_name"""
     if vm_name == None:
-        vm_name = ez_settings.active_remote_vm
+        vm_name = ez.active_remote_vm
     cmd = shlex.quote(cmd)
     ssh_cmd = (
         f"cat scripts/{script_name} | "
         f"ssh -o StrictHostKeyChecking=no "
-        f"-i {ez_settings.private_key_path} "
-        f"{ez_settings.user_name}@{vm_name}.{ez_settings.region}.cloudapp.azure.com "
+        f"-i {ez.private_key_path} "
+        f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com "
         f"{cmd}"
     )
     return exec_command(ez, ssh_cmd)
@@ -105,7 +104,7 @@ def exit_on_error(error_code, result):
 
 def jit_activate_vm(ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
-    resource_group = f"{ez_settings.workspace_name}-rg"
+    resource_group = f"{ez.workspace_name}-rg"
 
     print(f"CHECKING if virtual machine {vm_name} is running")
     if not is_vm_running(ez, vm_name):
@@ -134,7 +133,7 @@ def jit_activate_vm(ez, vm_name) -> None:
     vm_id, vm_location = results.splitlines()
     ez.debug_print(f"RESULT: virtual machine id {vm_id}")
 
-    subscription = ez_settings.subscription
+    subscription = ez.subscription
 
     # Generate the URI of the JIT activate endpoint REST API
 

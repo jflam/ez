@@ -2,6 +2,8 @@ import click
 from os import path
 import configparser
 
+CONFIGURATION_FILENAME = "~/.ez.conf"
+
 # Import sub-commands
 import workspace_commands
 import vm_commands
@@ -10,8 +12,6 @@ import env_commands
 from azutil import exec_command, exit_on_error
 
 # Ez object defines application-wide state 
-
-CONFIGURATION_FILENAME = "~/.ez.conf"
 
 class Ez(object):
     # Options
