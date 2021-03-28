@@ -1,11 +1,3 @@
-#! /Users/jlam/miniconda3/envs/jupyter/bin/python
-#
-# TODO: setuptools this thing so that it installs as a command
-# for now we have this gross workaround
-#
-# WSL 2 shebang:
-# /home/jlam/anaconda3/envs/jupyter/bin/python
-
 import click
 from os import path
 import configparser
@@ -166,6 +158,3 @@ env.add_command(env_commands.cp)
 env.add_command(env_commands.ssh)
 env.add_command(env_commands.stop)
 env.add_command(env_commands.up)
-
-if __name__ == "__main__":
-    ez()
