@@ -55,8 +55,8 @@ class Ez(object):
             self.active_remote_vm = config["Remotes"]["active_remote_vm"]
             self.active_remote_env = config["Remotes"]["active_remote_env"]
         else:
-            self.workspace_name = "ezworkspace"
-            self.resource_group = "ezworkspace-rg"
+            self.workspace_name = "ez-workspace"
+            self.resource_group = "ez-workspace-rg"
             self.subscription = ""
             self.region = ""
             self.private_key_path = ""
