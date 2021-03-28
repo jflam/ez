@@ -1,8 +1,7 @@
 # env commands
 
 import click
-from azutil import debug_print, exec_script_using_ssh, exit_on_error, get_vm_size, jit_activate_vm, is_gpu
-from settings import ez_settings, get_active_vm_name
+from azutil import exec_script_using_ssh, exit_on_error, is_gpu
 
 @click.command()
 @click.option("--env-name", "-n", required=True, help="Name of environment to start")
@@ -10,20 +9,18 @@ from settings import ez_settings, get_active_vm_name
 @click.option("--user-interface", "-u", default="code", help="UI {notebook|lab|code} to use. Default is code")
 @click.option("--vm-name", "-v", help="Name of the vm to use (default current active vm)")
 @click.option("--git-clone", is_flag=True, help="Force fresh clone of source GitHub repo before starting environment")
-@click.option("--debug", is_flag=True, help="Output diagnostic information")
-@click.option("--trace", is_flag=True, help="Trace execution")
-def run(env_name, git_uri, user_interface, vm_name, git_clone, debug, trace):
+@click.pass_obj
+def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     """Create and run an environment"""
-    resource_group = f"{ez_settings.workspace_name}-rg"
-    vm_name = get_active_vm_name(vm_name)
+    vm_name = ez.get_active_vm_name(vm_name)
     print(f"BUILDING {env_name} on {vm_name}...")
 
     # TODO: random number
     jupyter_port = 1235
 
-    debug_print(f"GET vm size for {vm_name}...", debug)
-    vm_size = get_vm_size(vm_name)
-    debug_print(f"RESULT: {vm_size}", debug)
+    ez.debug_print(f"GET vm size for {vm_name}...")
+    vm_size = ez.get_vm_size(vm_name)
+    ez.debug_print(f"RESULT: {vm_size}")
 
     if is_gpu(vm_size):
         docker_gpu_flag = "--gpus all, --ipc=host"
@@ -31,7 +28,7 @@ def run(env_name, git_uri, user_interface, vm_name, git_clone, debug, trace):
     else:
         docker_gpu_flag = ""
         build_gpu_flag = ""
-    debug_print(f"GPU flags: docker_gpu_flag {docker_gpu_flag} build_gpu_flag {build_gpu_flag}", debug)
+    ez.debug_print(f"GPU flags: docker_gpu_flag {docker_gpu_flag} build_gpu_flag {build_gpu_flag}")
 
     if git_clone:
         git_clone_flag = "--git-clone"
@@ -47,15 +44,14 @@ def run(env_name, git_uri, user_interface, vm_name, git_clone, debug, trace):
         f"{git_clone_flag} "
         f"--user-interface {user_interface} "
         f"{build_gpu_flag} "
-        f"--user-name {ez_settings.user_name} "
+        f"--user-name {ez.user_name} "
     )
-    debug_print(f"BUILD command: {build_cmd}", debug)
+    ez.debug_print(f"BUILD command: {build_cmd}")
 
-    debug_print(f"EXECUTING build script on {vm_name}...", debug)
-    exit_code, output = exec_script_using_ssh("build", vm_name, build_cmd, debug, trace)
+    ez.debug_print(f"EXECUTING build script on {vm_name}...")
+    exit_code, output = exec_script_using_ssh(ez, "build", vm_name, build_cmd)
     exit_on_error(exit_code, output)
-    debug_print(f"DONE", debug)
-    
+    ez.debug_print(f"DONE")
 
 @click.command()
 def ls():

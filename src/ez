@@ -1,14 +1,113 @@
 #! /home/jlam/anaconda3/envs/jupyter/bin/python
 
 import click
-from settings import ez_settings
+from os import path
+import configparser
 
 # Import sub-commands
 import workspace_commands
 import vm_commands
 import env_commands
 
-# workspace sub-commands
+from azutil import exec_command, exit_on_error
+
+# Ez object defines application-wide state 
+
+CONFIGURATION_FILENAME = "~/.ez.conf"
+
+class Ez(object):
+    # Options
+    debug: str
+    trace: str
+
+    # Workspace
+    workspace_name: str
+    resource_group: str
+    subscription: str
+    region: str
+    private_key_path: str
+    user_name: str
+
+    # Remotes
+    active_remote_vm: str 
+    active_remote_env: str
+
+    # Runtime state
+    logged_in: bool
+
+    def __init__(self, debug=False, trace=False):
+        self.debug = debug 
+        self.trace = trace
+        self.logged_in = False
+        self.load()
+
+    def load(self):
+        """Load configuration settings from the ~/.easy.conf file"""
+        config = configparser.ConfigParser()
+
+        easy_conf_file = path.expanduser(CONFIGURATION_FILENAME)
+        if path.exists(easy_conf_file):
+            config.read(easy_conf_file)
+            self.workspace_name = config["Workspace"]["workspace_name"]
+            self.resource_group = config["Workspace"]["resource_group"]
+            self.subscription = config["Workspace"]["subscription"]
+            self.region = config["Workspace"]["region"]
+            self.private_key_path = config["Workspace"]["private_key_path"]
+            self.user_name = config["Workspace"]["user_name"]
+            self.active_remote_vm = config["Remotes"]["active_remote_vm"]
+            self.active_remote_env = config["Remotes"]["active_remote_env"]
+        else:
+            self.workspace_name = "ezworkspace"
+            self.resource_group = "ezworkspace-rg"
+            self.subscription = ""
+            self.region = ""
+            self.private_key_path = ""
+            self.user_name = "ezuser"
+            self.active_remote_vm = ""
+            self.active_remote_env = ""
+
+    def save(self):
+        """Save configuration settings to the ~/.easy.conf file"""
+        config = configparser.ConfigParser()
+        config["Workspace"] = {}
+        config["Remotes"] = {}
+        config["Workspace"]["workspace_name"] = self.workspace_name
+        config["Workspace"]["resource_group"] = self.resource_group
+        config["Workspace"]["subscription"] = self.subscription
+        config["Workspace"]["region"] = self.region
+        config["Workspace"]["private_key_path"] = self.private_key_path
+        config["Workspace"]["user_name"] = self.user_name
+        config["Remotes"]["active_remote_vm"] = self.active_remote_vm
+        config["Remotes"]["active_remote_env"] = self.active_remote_env
+        with open(path.expanduser(CONFIGURATION_FILENAME), 'w') as file:
+            config.write(file)
+    
+    def get_active_vm_name(self, vm_name) -> str:
+        """Get the active VM name or exit"""
+        if vm_name == None:
+            if self.active_remote_vm == "":
+                print("No active remote VM, so you must specify --vm-name")
+                exit(1)
+            else:
+                return self.active_remote_vm
+        else:
+            return vm_name
+
+    def get_vm_size(self, vm_name) -> str:
+        """Return the vm size of vm_name"""
+        get_vm_size_cmd = (
+            f"az vm show --name {vm_name} --resource-group {self.resource_group} "
+            f"--query hardwareProfile.vmSize -o tsv"
+        )
+        exit_code, vm_size = exec_command(self, get_vm_size_cmd)
+        exit_on_error(exit_code, vm_size)
+        return vm_size
+
+    def debug_print(self, str):
+        if self.debug:
+            print(str)
+
+# Workspace sub-commands
 
 @click.group()
 def workspace():
@@ -54,9 +153,13 @@ env.add_command(env_commands.up)
 @click.group()
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
 @click.option("--trace", is_flag=True, help="Trace execution")
-def main(debug, trace):
+@click.pass_context
+def main(ctx, debug, trace):
     """Command-line interface for creating and using portable Python environments"""
-    pass
+    ctx.obj = Ez(debug, trace)
+    def _save_context():
+        ctx.obj.save()
+    ctx.call_on_close(_save_context)
 
 main.add_command(workspace)
 main.add_command(vm)
