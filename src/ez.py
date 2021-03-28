@@ -94,7 +94,8 @@ class Ez(object):
     def get_vm_size(self, vm_name) -> str:
         """Return the vm size of vm_name"""
         get_vm_size_cmd = (
-            f"az vm show --name {vm_name} --resource-group {self.resource_group} "
+            f"az vm show --name {vm_name} "
+            f"--resource-group {self.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
         exit_code, vm_size = exec_command(self, get_vm_size_cmd)
@@ -112,7 +113,8 @@ class Ez(object):
 @click.option("--trace", is_flag=True, help="Trace execution")
 @click.pass_context
 def ez(ctx, debug, trace):
-    """Command-line interface for creating and using portable Python environments"""
+    """Command-line interface for creating and using portable Python
+    environments"""
     ctx.obj = Ez(debug, trace)
     def _save_context():
         ctx.obj.save()

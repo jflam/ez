@@ -3,13 +3,18 @@
 import click
 from os import system
 
-from azutil import exit_on_error, is_gpu, exec_script_using_ssh, exec_command, jit_activate_vm, get_vm_size
+from azutil import exit_on_error, is_gpu, exec_script_using_ssh
+from azutil import exec_command, jit_activate_vm, get_vm_size
 
 @click.command()
-@click.option("--vm-name", "-n", required=True, help="Name of vm to create")
-@click.option("--vm-size", "-s", help="Size of Azure VM or '.' for local creation")
-@click.option("--image", "-i", default="UbuntuLTS", help="Image to use to create the VM (default UbuntuLTS)")
-@click.option("--check-dns", "-c", is_flag=True, help="Check if DNS name is available for --vm-name in region")
+@click.option("--vm-name", "-n", required=True, 
+              help="Name of vm to create")
+@click.option("--vm-size", "-s", 
+              help="Size of Azure VM or '.' for local creation")
+@click.option("--image", "-i", default="UbuntuLTS", 
+              help="Image to use to create the VM (default UbuntuLTS)")
+@click.option("--check-dns", "-c", is_flag=True, 
+              help="Check if DNS name is available for --vm-name in region")
 @click.pass_obj
 def create(ez, vm_name, vm_size, image, check_dns):
     """Create a virtual machine"""
@@ -19,14 +24,18 @@ def create(ez, vm_name, vm_size, image, check_dns):
     
     if vm_size == None:
         print(f"Missing VM size. VM sizes available in {ez.region}:")
-        system(f"az vm list-sizes --subscription {ez.subscription} --location {ez.region} --output table")
+        system((
+            f"az vm list-sizes --subscription {ez.subscription} "
+            f"--location {ez.region} --output table"))
         exit(1)
 
     # Check to see if the vm-name is taken already
     if check_dns:
         vm_dns_name = f"{vm_name}.{ez.region}.cloudapp.azure.com"
         if system(f"nslookup {vm_dns_name} > /dev/null") == 0:
-            print(f"The domain name {vm_dns_name} is already taken. Try a different --vm-name")
+            print((
+                f"The domain name {vm_dns_name} is already taken. "
+                f"Try a different --vm-name"))
             exit(1)
 
     # Select provisioning scripts for the VM based on whether vm_size is a GPU
@@ -35,9 +44,12 @@ def create(ez, vm_name, vm_size, image, check_dns):
         provision_vm_script = "provision-gpu"
 
     # TODO: enable JIT access when creating the virtual machine
-    # https://docs.microsoft.com/en-us/rest/api/securitycenter/jitnetworkaccesspolicies/createorupdate
+    # https://docs.microsoft.com/en-us/rest/api/securitycenter/...
+    # jitnetworkaccesspolicies/createorupdate
 
-    print(f"CREATING virtual machine {vm_name} size {vm_size} in resource group {ez.resource_group}...")
+    print((
+        f"CREATING virtual machine {vm_name} size {vm_size} "
+        f"in resource group {ez.resource_group}..."))
     az_vm_create = (
         f"az vm create --name {vm_name}"
         f"             --resource-group {ez.resource_group}"
@@ -103,7 +115,8 @@ def stop(ez, vm_name):
     """Stop a virtual machine"""
     vm_name = ez.get_active_vm_name(vm_name)
     print(f"STOPPING virtual machine {vm_name}")
-    exec_command(ez, f"az vm stop --name {vm_name} --resource-group {ez.resource_group}")
+    exec_command(ez,
+        f"az vm stop --name {vm_name} --resource-group {ez.resource_group}")
     exit(0)
 
 @click.command()
@@ -149,8 +162,11 @@ def info(ez, vm_name):
     vm_size = get_vm_size(ez, vm_name)
 
     # Now use the vm_size to get hardware details 
-    exit_code, details = exec_command(ez, f"az vm list-sizes -l {ez.region} --output tsv | grep {vm_size}")
+    exit_code, details = exec_command(ez, 
+        f"az vm list-sizes -l {ez.region} --output tsv | grep {vm_size}")
     exit_on_error(exit_code, details)
     specs = details.split("\t")
-    print(f"VM INFO for {vm_name} size: {specs[2]}: cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB")
+    print((
+        f"VM INFO for {vm_name} size: {specs[2]}: "
+        f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
     exit(0)

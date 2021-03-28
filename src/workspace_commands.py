@@ -9,20 +9,24 @@ from settings import ez_settings, save_settings
 from azutil import login
 
 @click.command()
-@click.option("--workspace-name", "-n", default="ez-workspace", help="Name of workspace to create (default ezworkspace)")
-@click.option("--subscription", "-s", required=True, help="Azure subscription id")
-@click.option("--region", "-r", required=True, help="Region to create workspace in")
-@click.option("--private-key-path", "-k", required=True, help="Path to private key to use for this registration")
-@click.option("--user-name", "-u", default="ezuser", help="Username for all VMs (default is ezuser)")
+@click.option("--workspace-name", "-n", default="ez-workspace", 
+              help="Name of workspace to create (default ezworkspace)")
+@click.option("--subscription", "-s", required=True, 
+              help="Azure subscription id")
+@click.option("--region", "-r", required=True, 
+              help="Region to create workspace in")
+@click.option("--private-key-path", "-k", required=True, 
+              help="Path to private key to use for this registration")
+@click.option("--user-name", "-u", default="ezuser", 
+              help="Username for all VMs (default is ezuser)")
 def create(workspace_name, subscription, region, private_key_path, user_name):
     """Create a workspace"""
 
     # A workspace is defined by ~/.easy.conf file
     if path.exists(path.expanduser(CONFIGURATION_FILENAME)):
-        print(f"{CONFIGURATION_FILENAME} exists already. easy only supports a single registration")
-        print("at a time today. To register a new configuration, make sure to manually")
-        print("delete the current configuration by running easy workspace delete or")
-        print(f"deleting the {CONFIGURATION_FILENAME} file")
+        print((
+               f"{CONFIGURATION_FILENAME} exists already. ez only "
+               f"supports a single registration at a time today."))
         exit(1)
 
     click.echo(f"CREATING a new workspace: {workspace_name}")
@@ -44,7 +48,9 @@ def create(workspace_name, subscription, region, private_key_path, user_name):
 
     resource_group = f"{workspace_name}-rg"
     print(f"Creating a new Azure Resource Group: {resource_group}\n")
-    system(f"az group create --location {region} --name {resource_group} --output table")
+    system((
+           f"az group create --location {region} --name {resource_group} "
+           f"--output table"))
     print("DONE!")
 
 @click.command()

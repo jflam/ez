@@ -4,11 +4,18 @@ import click
 from azutil import exec_script_using_ssh, exit_on_error, is_gpu
 
 @click.command()
-@click.option("--env-name", "-n", required=True, help="Name of environment to start")
-@click.option("--git-uri", "-g", required=True, help="URI of git repo to load in the environment")
-@click.option("--user-interface", "-u", default="code", help="UI {notebook|lab|code} to use. Default is code")
-@click.option("--vm-name", "-v", help="Name of the vm to use (default current active vm)")
-@click.option("--git-clone", is_flag=True, help="Force fresh clone of source GitHub repo before starting environment")
+@click.option("--env-name", "-n", required=True, 
+              help="Name of environment to start")
+@click.option("--git-uri", "-g", required=True, 
+              help="URI of git repo to load in the environment")
+@click.option("--user-interface", "-u", default="code", 
+              help="UI {notebook|lab|code} to use. Default is code")
+@click.option("--vm-name", "-v", 
+              help="Name of the vm to use (default current active vm)")
+@click.option("--git-clone", is_flag=True, 
+              help=(
+                  "Force fresh clone of GitHub repo before "
+                  "starting environment"))
 @click.pass_obj
 def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     """Create and run an environment"""
@@ -28,7 +35,9 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     else:
         docker_gpu_flag = ""
         build_gpu_flag = ""
-    ez.debug_print(f"GPU flags: docker_gpu_flag {docker_gpu_flag} build_gpu_flag {build_gpu_flag}")
+    ez.debug_print((
+        f"GPU flags: docker_gpu_flag {docker_gpu_flag} "
+        f"build_gpu_flag {build_gpu_flag}"))
 
     if git_clone:
         git_clone_flag = "--git-clone"
