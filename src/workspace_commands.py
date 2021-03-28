@@ -2,9 +2,7 @@
 
 from os import path, system
 from settings import CONFIGURATION_FILENAME
-import sys
 import click
-sys.path.insert(0, "..")
 from settings import ez_settings, save_settings
 from azutil import login
 
