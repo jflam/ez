@@ -1,4 +1,10 @@
-#! /home/jlam/anaconda3/envs/jupyter/bin/python
+#! /Users/jlam/miniconda3/envs/jupyter/bin/python
+#
+# TODO: setuptools this thing so that it installs as a command
+# for now we have this gross workaround
+#
+# WSL 2 shebang:
+# /home/jlam/anaconda3/envs/jupyter/bin/python
 
 import click
 from os import path
@@ -107,9 +113,22 @@ class Ez(object):
         if self.debug:
             print(str)
 
-# Workspace sub-commands
+# ez top-level command
 
 @click.group()
+@click.option("--debug", is_flag=True, help="Output diagnostic information")
+@click.option("--trace", is_flag=True, help="Trace execution")
+@click.pass_context
+def ez(ctx, debug, trace):
+    """Command-line interface for creating and using portable Python environments"""
+    ctx.obj = Ez(debug, trace)
+    def _save_context():
+        ctx.obj.save()
+    ctx.call_on_close(_save_context)
+
+# workspace sub-commands
+
+@ez.group()
 def workspace():
     """Manage workspaces"""
     pass
@@ -120,7 +139,7 @@ workspace.add_command(workspace_commands.ls)
 
 # vm sub-commands
 
-@click.group()
+@ez.group()
 def vm():
     """Manage virtual machines"""
     pass
@@ -136,7 +155,7 @@ vm.add_command(vm_commands.ssh)
 
 # environment sub-commands
 
-@click.group()
+@ez.group()
 def env():
     """Manage environments"""
     pass
@@ -148,22 +167,5 @@ env.add_command(env_commands.ssh)
 env.add_command(env_commands.stop)
 env.add_command(env_commands.up)
 
-# ez top-level command
-
-@click.group()
-@click.option("--debug", is_flag=True, help="Output diagnostic information")
-@click.option("--trace", is_flag=True, help="Trace execution")
-@click.pass_context
-def main(ctx, debug, trace):
-    """Command-line interface for creating and using portable Python environments"""
-    ctx.obj = Ez(debug, trace)
-    def _save_context():
-        ctx.obj.save()
-    ctx.call_on_close(_save_context)
-
-main.add_command(workspace)
-main.add_command(vm)
-main.add_command(env)
-
 if __name__ == "__main__":
-    main()
+    ez()
