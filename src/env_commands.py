@@ -1,7 +1,10 @@
 # env commands
 
+from os import chdir, getcwd, mkdir, path, system
 import click
 from azutil import exec_script_using_ssh, exit_on_error, is_gpu
+from azutil import generate_devcontainer_json, generate_remote_settings_json
+from azutil import generate_settings_json
 
 @click.command()
 @click.option("--env-name", "-n", required=True, 
@@ -22,14 +25,21 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     vm_name = ez.get_active_vm_name(vm_name)
     print(f"BUILDING {env_name} on {vm_name}...")
 
-    # TODO: random number
+    # TODO: random numbers
     jupyter_port = 1235
+    token="1234"
+
+    if env_name == ".":
+        is_local = True
+    else:
+        is_local = False
 
     ez.debug_print(f"GET vm size for {vm_name}...")
     vm_size = ez.get_vm_size(vm_name)
     ez.debug_print(f"RESULT: {vm_size}")
 
-    if is_gpu(vm_size):
+    has_gpu = is_gpu(vm_size)
+    if has_gpu:
         docker_gpu_flag = "--gpus all, --ipc=host"
         build_gpu_flag = "--gpu"
     else:
@@ -61,6 +71,51 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     exit_code, output = exec_script_using_ssh(ez, "build", vm_name, build_cmd)
     exit_on_error(exit_code, output)
     ez.debug_print(f"DONE")
+
+    repo_name = path.basename(git_uri)
+    local_dirname = f"{repo_name}_remote"
+    path_to_vsc_project = f"{getcwd()}/{local_dirname}"
+
+    print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
+    if not path.exists(local_dirname):
+        mkdir(local_dirname)
+
+    devcontainer_path = f"{path_to_vsc_project}/.devcontainer/devcontainer.json"
+    devcontainer_json = generate_devcontainer_json(
+        ez, jupyter_port, token, is_local, has_gpu
+    )
+    print(f"GENERATE {devcontainer_path}")
+
+    with open(devcontainer_path, 'w') as file:
+        file.write(devcontainer_json)
+
+    settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
+    print(f"GENERATE {settings_json_path}")
+    with open(settings_json_path, "w") as file:
+        file.write(generate_settings_json)
+
+    remote_settings_json_path = (
+        f"{path_to_vsc_project}/.vscode/remote_settings.json")
+    print(f"GENERATE {remote_settings_json_path}")
+    with open(remote_settings_json_path, "w") as file:
+        file.write(generate_remote_settings_json)
+
+    write_settings_json_cmd = (
+        f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
+        f'easy/env/{ez.active_remote_env}/repo/.vscode; '
+        f'mv /tmp/settings.json /home/{ez.user_name}/'
+        f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
+    )
+    exit_code, output = exec_script_using_ssh(ez, remote_settings_json_path, 
+                                              vm_name, 
+                                              write_settings_json_cmd)
+    exit_on_error(exit_code, output)
+
+    # TODO: add VS Code Insiders support
+    print("LAUNCH Visual Studio Code")
+    chdir(path_to_vsc_project)
+    system("code .")
+    exit(0)
 
 @click.command()
 def ls():

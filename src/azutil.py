@@ -193,3 +193,79 @@ def get_vm_size(ez, vm_name):
     exit_code, vm_size = exec_command(ez, info_cmd)
     exit_on_error(exit_code, vm_size)
     return vm_size
+
+def generate_devcontainer_json(ez, jupyter_port_number, token, 
+                               local=False, has_gpu=False):
+    """Generate an appropriate devcontainer.json file"""
+    if local:
+        mount_config = (
+            f'    // Mount the local repo into the container\n'
+            f'    "mounts": ["source=/var/run/docker.sock,'
+            f'target=/var/run/docker.sock,type=bind,\n'
+        )
+        container_jupyter_dir = f"/workspaces/{ez.active_local_env}/"
+        container_jupyter_log = (
+            f"/workspaces/{ez.active_local_env}/jupyter.log")
+        container_location = "localhost"
+    else:
+        mount_config = (
+            f'    // Mount the repo on the remote VM into the container\n'
+            f'    "workspaceMount": "source=/home/{ez.user_name} '
+            f'/easy/env/{ez.active_remote_env}/repo,target='
+            f'/workspace,type=bind,consistency=cached\n'
+            f'    "workspaceFolder": "/workspace",\n'
+        )
+        container_jupyter_dir = f"/workspaces/"
+        container_jupyter_log = f"/workspaces/jupyter.log"
+        container_location = (
+            f"{ez.active_remote_vm}.{ez.region}.cloudapp.azure.com")
+    
+    if has_gpu:
+        run_args = '"runArgs": ["--gpus=all", "--ipc=host"],'
+    else:
+        run_args = ""
+    
+    devcontainer_json = (
+        f'{{\n'
+        f'    "name": "on {container_location}",\n'
+        # Note that this is tricky - the built container image name 
+        # is the same as the environment name
+        f'    "image": "{ez.active_remote_env}",\n'
+        f'    "forwardPorts": [{jupyter_port_number}],\n'
+        f'    {run_args}'
+        f'    "containerUser": "{ez.user_name}",\n'
+        f'    {mount_config}\n'
+        f'    "settings": {{\n'
+        f'        "terminal.integrated.shell.linux": "/bin/bash",\n'
+        f'    }},\n'
+        f'    "postStartCommand": "nohup jupyter notebook --no browser '
+        f'--port {jupyter_port_number} --ip=0.0.0.0 --token={token} '
+        f'--debug {container_jupyter_dir}>{container_jupyter_log} 2>&1 &",\n'
+        f'    "extensions": [\n'
+        f'        "ms-python.python",\n'
+        f'        "ms-toolsai.jupyter",\n'
+        f'        "ms-python.vscode-pylance"\n'
+        f'    ],\n'
+        f'}}\n'
+    )
+    return devcontainer_json
+
+def generate_settings_json(ez):
+    """Generate an appropriate settings.json file"""
+    settings_json = (
+        f'{{\n'
+        f'    "docker.host": "ssh://{ez.user_name}@{ez.active_remote_vm}.'
+        f'cloudapp.azure.com",\n'
+        f'}}\n'
+    )
+    return settings_json
+
+def generate_remote_settings_json(ez, jupyter_port_number, token):
+    """Generate remote_settings.json file"""
+    remote_settings_json = (
+        f'{{\n'
+        f'    "python.dataScience.jupyterServerURI": '
+        f'http://localhost:{jupyter_port_number}/?token={token}"\n'
+        f'}}\n'
+    )
+    return remote_settings_json
