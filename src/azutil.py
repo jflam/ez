@@ -278,7 +278,7 @@ def generate_remote_settings_json(ez, jupyter_port_number, token):
     remote_settings_json = (
         f'{{\n'
         f'    "python.dataScience.jupyterServerURI": '
-        f'http://localhost:{jupyter_port_number}/?token={token}"\n'
+        f'"http://localhost:{jupyter_port_number}/?token={token}"\n'
         f'}}\n'
     )
     return remote_settings_json
