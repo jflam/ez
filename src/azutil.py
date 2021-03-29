@@ -35,16 +35,27 @@ def exec_command(ez, command):
         return (0, "")
     else:
         try:
-            # TODO: make this incremental char/line at a time
-            output = (
-                subprocess.check_output(command, 
-                                        stderr=subprocess.STDOUT, 
-                                        shell=True)
-                                        .decode(sys.stdout.encoding))
             if ez.debug:
                 print(f"DEBUG: {command}")
-                print(f"OUTPUT: {output}")
-            return (0, output)
+                print("OUTPUT: ")
+
+            cumulative = ''
+            process = subprocess.Popen(command,
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT,
+                                       shell=True)
+            while True:
+                output = process.stdout.read(1).decode(sys.stdout.encoding)
+                cumulative += output
+
+                if output == '' and process.poll() != None:
+                    break
+
+                if ez.debug:
+                    sys.stdout.write(output)
+                    sys.stdout.flush()
+
+            return (0, cumulative)
         except subprocess.CalledProcessError as err:
             return (err.returncode, err.output.decode(sys.stdout.encoding))
 
