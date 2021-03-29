@@ -72,7 +72,7 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     ez.debug_print(f"BUILD command: {build_cmd}")
 
     ez.debug_print(f"EXECUTING build script on {vm_name}...")
-    build_script_path = f"{path.dirname(path.realpath(__file__))}/build"
+    build_script_path = f"{path.dirname(path.realpath(__file__))}/scripts/build"
     exit_code, output = exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
     exit_on_error(exit_code, output)
     ez.debug_print(f"DONE")
