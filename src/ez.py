@@ -17,6 +17,7 @@ class Ez(object):
     # Options
     debug: str
     trace: str
+    insiders: bool
 
     # Workspace
     workspace_name: str
@@ -33,9 +34,10 @@ class Ez(object):
     # Runtime state
     logged_in: bool
 
-    def __init__(self, debug=False, trace=False):
+    def __init__(self, debug=False, trace=False, insiders=False):
         self.debug = debug 
         self.trace = trace
+        self.insiders = insiders
         self.logged_in = False
         self.load()
 
@@ -111,11 +113,12 @@ class Ez(object):
 @click.group()
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
 @click.option("--trace", is_flag=True, help="Trace execution")
+@click.option("--insiders", is_flag=True, help="Run using VS Code Insiders")
 @click.pass_context
-def ez(ctx, debug, trace):
+def ez(ctx, debug, trace, insiders):
     """Command-line interface for creating and using portable Python
     environments"""
-    ctx.obj = Ez(debug, trace)
+    ctx.obj = Ez(debug, trace, insiders)
     def _save_context():
         ctx.obj.save()
     ctx.call_on_close(_save_context)

@@ -122,10 +122,14 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
                                               write_settings_json_cmd)
     exit_on_error(exit_code, output)
 
-    # TODO: add VS Code Insiders support
-    print("LAUNCH Visual Studio Code")
+    if ez.insiders:
+        print("LAUNCH Visual Studio Code Insiders...")
+        vscode_cmd = "code-insiders ."
+    else:
+        print("LAUNCH Visual Studio Code")
+        vscode_cmd = "code ."
     chdir(path_to_vsc_project)
-    system("code .")
+    system(vscode_cmd)
     exit(0)
 
 @click.command()
