@@ -1,6 +1,6 @@
 # env commands
 
-from os import chdir, getcwd, mkdir, path, system
+from os import chdir, getcwd, makedirs, mkdir, path, system
 import click
 from azutil import exec_script_using_ssh, exit_on_error, is_gpu
 from azutil import generate_devcontainer_json, generate_remote_settings_json
@@ -24,6 +24,10 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     """Create and run an environment"""
     vm_name = ez.get_active_vm_name(vm_name)
     print(f"BUILDING {env_name} on {vm_name}...")
+
+    # Initialize context
+    ez.active_remote_vm = vm_name
+    ez.active_remote_env = env_name
 
     # TODO: random numbers
     jupyter_port = 1235
@@ -68,7 +72,8 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     ez.debug_print(f"BUILD command: {build_cmd}")
 
     ez.debug_print(f"EXECUTING build script on {vm_name}...")
-    exit_code, output = exec_script_using_ssh(ez, "build", vm_name, build_cmd)
+    build_script_path = f"{path.dirname(path.realpath(__file__))}/build"
+    exit_code, output = exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
     exit_on_error(exit_code, output)
     ez.debug_print(f"DONE")
 
@@ -77,28 +82,34 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     path_to_vsc_project = f"{getcwd()}/{local_dirname}"
 
     print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
-    if not path.exists(local_dirname):
-        mkdir(local_dirname)
+    if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
+        makedirs(f"{path_to_vsc_project}/.devcontainer")
+    if not path.exists(f"{path_to_vsc_project}/.vscode"):
+        makedirs(f"{path_to_vsc_project}/.vscode")
 
     devcontainer_path = f"{path_to_vsc_project}/.devcontainer/devcontainer.json"
     devcontainer_json = generate_devcontainer_json(
         ez, jupyter_port, token, is_local, has_gpu
     )
-    print(f"GENERATE {devcontainer_path}")
 
+    print(f"GENERATE {devcontainer_path}")
     with open(devcontainer_path, 'w') as file:
         file.write(devcontainer_json)
 
     settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
+    settings_json = generate_settings_json(ez)
+
     print(f"GENERATE {settings_json_path}")
     with open(settings_json_path, "w") as file:
-        file.write(generate_settings_json)
+        file.write(settings_json)
 
     remote_settings_json_path = (
         f"{path_to_vsc_project}/.vscode/remote_settings.json")
+    remote_settings_json = generate_remote_settings_json(ez, jupyter_port, token)
+
     print(f"GENERATE {remote_settings_json_path}")
     with open(remote_settings_json_path, "w") as file:
-        file.write(generate_remote_settings_json)
+        file.write(remote_settings_json)
 
     write_settings_json_cmd = (
         f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'

@@ -1,7 +1,7 @@
 # VM commands
 
 import click
-from os import system
+from os import path, system
 
 from azutil import exit_on_error, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
@@ -66,7 +66,11 @@ def create(ez, vm_name, vm_size, image, check_dns):
     # TODO: analyze output for correct flags
 
     print(f"INSTALLING system software on virtual machine")
-    exit_code, _ = exec_script_using_ssh(ez, provision_vm_script, vm_name, "")
+    provision_vm_script_path = (
+        f"{path.dirname(path.realpath(__file__))}/"
+        f"{provision_vm_script}"
+    )
+    exit_code, _ = exec_script_using_ssh(ez, provision_vm_script_path, vm_name, "")
     if exit_code != 0:
         exit(1)
 

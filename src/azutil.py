@@ -1,18 +1,20 @@
 # Utility functions for working with Azure
 
-from os import system
+from os import path, system
 import json
 import shlex
 import subprocess
 import sys
 
-def exec_script_using_ssh(ez, script_name, vm_name, cmd=""):
-    """Execute script_name on vm_name"""
+def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
+    """Execute script_name on vm_name.
+    script_path must be an absolute path."""
     if vm_name == None:
         vm_name = ez.active_remote_vm
     cmd = shlex.quote(cmd)
+
     ssh_cmd = (
-        f"cat scripts/{script_name} | "
+        f"cat {script_path} | "
         f"ssh -o StrictHostKeyChecking=no "
         f"-i {ez.private_key_path} "
         f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com "
@@ -210,7 +212,7 @@ def generate_devcontainer_json(ez, jupyter_port_number, token,
     else:
         mount_config = (
             f'    // Mount the repo on the remote VM into the container\n'
-            f'    "workspaceMount": "source=/home/{ez.user_name} '
+            f'    "workspaceMount": "source=/home/{ez.user_name}'
             f'/easy/env/{ez.active_remote_env}/repo,target='
             f'/workspace,type=bind,consistency=cached\n'
             f'    "workspaceFolder": "/workspace",\n'
@@ -255,7 +257,7 @@ def generate_settings_json(ez):
     settings_json = (
         f'{{\n'
         f'    "docker.host": "ssh://{ez.user_name}@{ez.active_remote_vm}.'
-        f'cloudapp.azure.com",\n'
+        f'{ez.region}.cloudapp.azure.com",\n'
         f'}}\n'
     )
     return settings_json
