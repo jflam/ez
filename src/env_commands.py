@@ -2,7 +2,7 @@
 
 from os import chdir, getcwd, makedirs, mkdir, path, system
 import click
-from azutil import exec_script_using_ssh, exit_on_error, is_gpu
+from azutil import exec_command, exec_script_using_ssh, exit_on_error, is_gpu
 from azutil import generate_devcontainer_json, generate_remote_settings_json
 from azutil import generate_settings_json
 
@@ -28,12 +28,14 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
     # Initialize context
     ez.active_remote_vm = vm_name
     ez.active_remote_env = env_name
+    ez.local_repo_name = path.basename(git_uri)
 
+    # TODO: refactor this into a build container image function in azutil.py
     # TODO: random numbers
     jupyter_port = 1235
     token="1234"
 
-    if env_name == ".":
+    if vm_name == ".":
         is_local = True
     else:
         is_local = False
@@ -59,9 +61,9 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
         git_clone_flag = ""
 
     # Generate command to launch build script
-    build_cmd = (
-        f"cat > /tmp/build ; chmod 755 /tmp/build ; "
-        f"/tmp/build --env-name {env_name} "
+    build_script_path = f"{path.dirname(path.realpath(__file__))}/scripts/build"
+    build_params = (
+        f"--env-name {env_name} "
         f"--git-repo {git_uri} "
         f"--port {jupyter_port} "
         f"{git_clone_flag} "
@@ -69,19 +71,44 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
         f"{build_gpu_flag} "
         f"--user-name {ez.user_name} "
     )
-    ez.debug_print(f"BUILD command: {build_cmd}")
 
-    ez.debug_print(f"EXECUTING build script on {vm_name}...")
-    build_script_path = f"{path.dirname(path.realpath(__file__))}/scripts/build"
-    exit_code, output = exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
+    # Execute script based on local vs remote case
+    if not is_local:
+        build_cmd = f"cat > /tmp/build; chmod 755 /tmp/build; /tmp/build {build_params}"
+        ez.debug_print(f"BUILD command: {build_cmd}")
+    else:
+        build_cmd = f"{build_script_path} {build_params}"
+        ez.debug_print(f"BUILD command: {build_cmd}")
+
+    ez.debug_print(f"BUILD command: {build_cmd}")
+    if not is_local:
+        ez.debug_print(f"EXECUTING build script on {vm_name}...")
+        exit_code, output = exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
+    else:
+        ez.debug_print(f"EXECUTING build script locally...")
+        exit_code, output = exec_command(ez, build_cmd)
+
     exit_on_error(exit_code, output)
     ez.debug_print(f"DONE")
 
     repo_name = path.basename(git_uri)
-    local_dirname = f"{repo_name}_remote"
+    if not is_local:
+        local_dirname = f"{repo_name}_remote"
+    else:
+        local_dirname = repo_name
+
     path_to_vsc_project = f"{getcwd()}/{local_dirname}"
 
     print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
+
+    # For local projects we git clone into path_to_vsc_project
+    if is_local:
+        if not path.exists(path_to_vsc_project):
+            print(f"CLONING {git_uri} into {path_to_vsc_project}...")
+            exec_command(ez, f"git clone {git_uri} {repo_name}")
+        else:
+            print(f"SKIPPING git clone of {git_uri} as there is already {path_to_vsc_project} directory")
+
     if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
         makedirs(f"{path_to_vsc_project}/.devcontainer")
     if not path.exists(f"{path_to_vsc_project}/.vscode"):
@@ -97,30 +124,31 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone):
         file.write(devcontainer_json)
 
     settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
-    settings_json = generate_settings_json(ez)
+    settings_json = generate_settings_json(ez, is_local, jupyter_port, token)
 
     print(f"GENERATE {settings_json_path}")
     with open(settings_json_path, "w") as file:
         file.write(settings_json)
 
-    remote_settings_json_path = (
-        f"{path_to_vsc_project}/.vscode/remote_settings.json")
-    remote_settings_json = generate_remote_settings_json(ez, jupyter_port, token)
+    if not is_local:
+        remote_settings_json_path = (
+            f"{path_to_vsc_project}/.vscode/remote_settings.json")
+        remote_settings_json = generate_remote_settings_json(ez, jupyter_port, token)
 
-    print(f"GENERATE {remote_settings_json_path}")
-    with open(remote_settings_json_path, "w") as file:
-        file.write(remote_settings_json)
+        print(f"GENERATE {remote_settings_json_path}")
+        with open(remote_settings_json_path, "w") as file:
+            file.write(remote_settings_json)
 
-    write_settings_json_cmd = (
-        f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
-        f'easy/env/{ez.active_remote_env}/repo/.vscode; '
-        f'mv /tmp/settings.json /home/{ez.user_name}/'
-        f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
-    )
-    exit_code, output = exec_script_using_ssh(ez, remote_settings_json_path, 
-                                              vm_name, 
-                                              write_settings_json_cmd)
-    exit_on_error(exit_code, output)
+        write_settings_json_cmd = (
+            f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
+            f'easy/env/{ez.active_remote_env}/repo/.vscode; '
+            f'mv /tmp/settings.json /home/{ez.user_name}/'
+            f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
+        )
+        exit_code, output = exec_script_using_ssh(ez, remote_settings_json_path, 
+                                                vm_name, 
+                                                write_settings_json_cmd)
+        exit_on_error(exit_code, output)
 
     if ez.insiders:
         print("LAUNCH Visual Studio Code Insiders...")

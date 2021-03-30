@@ -95,6 +95,10 @@ class Ez(object):
 
     def get_vm_size(self, vm_name) -> str:
         """Return the vm size of vm_name"""
+        # Special return value for localhost
+        if vm_name == '.':
+            return '.'
+
         get_vm_size_cmd = (
             f"az vm show --name {vm_name} "
             f"--resource-group {self.resource_group} "
