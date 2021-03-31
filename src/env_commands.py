@@ -1,10 +1,10 @@
 # env commands
 
-from os import chdir, getcwd, makedirs, mkdir, path, system
+from os import chdir, getcwd, makedirs, path, system
 import click
 from azutil import exec_command, exec_script_using_ssh, exit_on_error, is_gpu
 from azutil import generate_devcontainer_json, generate_remote_settings_json
-from azutil import generate_settings_json
+from azutil import generate_settings_json, jit_activate_vm
 
 @click.command()
 @click.option("--env-name", "-n", required=True, 
@@ -181,6 +181,53 @@ def stop():
     pass
 
 @click.command()
-def up():
+@click.option("--vm-name", "-v", required=True,
+              help="Name of the vm to migrate the environment to")
+@click.pass_obj
+def up(ez, vm_name):
     """Migrate the current environment to a new VM"""
-    pass
+
+    # Let's assume that we are in a local environment for the purpose
+    # of this. Later I will add heuristics to error out if this is not
+    # the case.
+
+    # Get the URI of the repo we are currently in
+    exit_code, git_remote_uri = exec_command(ez, 
+        "git config --get remote.origin.url")
+    exit_on_error(exit_code, git_remote_uri)
+
+    if git_remote_uri == "":
+        print(f"ERROR: directory {getcwd()} is not in a git repo")
+        exit(1)
+
+    print(f"MIGRATING {git_remote_uri} to {vm_name}")
+
+    # Start the remote VM
+    jit_activate_vm(ez, vm_name)
+    ez.active_remote_vm = vm_name
+
+    # Check to see if there are uncommitted changes
+    exit_code, _ = exec_command(ez, 
+        'git status | grep "Changes not staged for commit"')
+    if exit_code == 0:
+        print("STASHING uncommitted changes")
+        exit_code, result = exec_command(ez, "git stash")
+        exit_on_error(exit_code, result)
+        exit_code, result = exec_command(ez,
+                       "git stash -p --binary > ~/tmp/changes.patch")
+        exit_on_error(exit_code, result)
+
+        print(f"COPYING changes.patch to {vm_name}")
+        scp_cmd = (
+            f"scp -i {ez.private_key_path} "
+            f"~/tmp/changes.patch "
+            f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com:"
+            f"/home/{ez.user_name}/tmp/changes.patch"
+        )
+        exit_code, result = exec_command(ez, scp_cmd)
+        exit_on_error(exit_code, result)
+
+    else:
+        print(f"STARTING {git_remote_uri} on {vm_name}")
+
+    exit(0)

@@ -55,7 +55,7 @@ def exec_command(ez, command):
                     sys.stdout.write(output)
                     sys.stdout.flush()
 
-            return (0, cumulative)
+            return (0, cumulative.strip())
         except subprocess.CalledProcessError as err:
             return (err.returncode, err.output.decode(sys.stdout.encoding))
 
