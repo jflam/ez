@@ -9,7 +9,7 @@ import workspace_commands
 import vm_commands
 import env_commands
 
-from azutil import exec_command, exit_on_error
+from azutil import exec_command
 
 # Ez object defines application-wide state 
 
@@ -104,8 +104,7 @@ class Ez(object):
             f"--resource-group {self.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
-        exit_code, vm_size = exec_command(self, get_vm_size_cmd)
-        exit_on_error(exit_code, vm_size)
+        _, vm_size = exec_command(self, get_vm_size_cmd)
         return vm_size
 
     def debug_print(self, str):

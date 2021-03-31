@@ -22,7 +22,7 @@ def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
     )
     return exec_command(ez, ssh_cmd)
 
-def exec_command(ez, command):
+def exec_command(ez, command, fail_fast=True):
     """Shell execute command and capture output. Returns a tuple of (return
     value, output). If --trace set globally then just display commands but
     don't actually execute."""
@@ -55,9 +55,13 @@ def exec_command(ez, command):
                     sys.stdout.write(output)
                     sys.stdout.flush()
 
-            return (0, cumulative.strip())
+            return (process.returncode, cumulative.strip())
         except subprocess.CalledProcessError as err:
-            return (err.returncode, err.output.decode(sys.stdout.encoding))
+            error_message = err.output.decode(sys.stdout.encoding)
+            if fail_fast:
+                print(f"ERROR: {error_message}")
+                exit(err.returncode)
+            return (err.returncode, error_message)
 
 def login():
     """Login using the interactive session user's credentials"""
@@ -115,21 +119,16 @@ def is_vm_running(ez, vm_name) -> bool:
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
         f"grep \"VM running\" > /dev/null"
     )
-    exit_code, _ = exec_command(ez, is_running)
+    exit_code, _ = exec_command(ez, is_running, False)
     return True if exit_code == 0 else False
-
-def exit_on_error(error_code, result):
-    if error_code != 0:
-        print(f"ERROR: {result}")
-        exit(1)
 
 def jit_activate_vm(ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
     resource_group = f"{ez.workspace_name}-rg"
 
-    print(f"CHECKING if virtual machine {vm_name} is running")
+    print(f"CHECKING if virtual machine {vm_name} is running...")
     if not is_vm_running(ez, vm_name):
-        ez.debug_print(f"STARTING virtual machine {vm_name}")
+        print(f"STARTING virtual machine {vm_name}...")
         start_vm_cmd = (
             f"az vm start --name {vm_name} "
             f"--resource-group {resource_group}")
@@ -139,16 +138,15 @@ def jit_activate_vm(ez, vm_name) -> None:
         exec_command(ez, start_vm_cmd)
         exec_command(ez, wait_vm_cmd)
     else:
-        ez.debug_print(f"ALREADY RUNNING virtual machine {vm_name}")
+        print(f"ALREADY RUNNING virtual machine {vm_name}")
 
-    print(f"JIT ACTIVATING {vm_name}")
+    print(f"JIT ACTIVATING {vm_name}...")
 
     # Get local machine IP address for JIT activation
 
     ez.debug_print(f"GETTING local IP address...")
     get_my_ip_cmd = "curl -k -s https://ifconfig.me/ip"
-    exit_code, local_ip_address = exec_command(ez, get_my_ip_cmd)
-    exit_on_error(exit_code, local_ip_address)
+    _, local_ip_address = exec_command(ez, get_my_ip_cmd)
     ez.debug_print(f"RESULT: local IP address {local_ip_address}")
 
     ez.debug_print(f"GETTING virtual machine id for {vm_name}...")
@@ -156,8 +154,7 @@ def jit_activate_vm(ez, vm_name) -> None:
         f"az vm show -n {vm_name} -g {resource_group} "
         f"-o tsv --query \"[id, location]\""
     )
-    exit_code, results = exec_command(ez, vm_show_cmd)
-    exit_on_error(exit_code, results)
+    _, results = exec_command(ez, vm_show_cmd)
     vm_id, vm_location = results.splitlines()
     ez.debug_print(f"RESULT: virtual machine id {vm_id}")
 
@@ -196,9 +193,9 @@ def jit_activate_vm(ez, vm_name) -> None:
     # Make the REST API call using the az rest cli command
 
     ez.debug_print(f"REQUESTING JIT activation for {vm_name}...")
-    exit_code, output = exec_command(ez, jit_command)
-    exit_on_error(exit_code, output)
+    _, output = exec_command(ez, jit_command)
     ez.debug_print(f"RESULT {output}")
+    print("JIT ACTIVATION COMPLETE")
 
 def get_vm_size(ez, vm_name):
     """Return the VM size of vm_name"""
@@ -208,8 +205,7 @@ def get_vm_size(ez, vm_name):
         f"--resource-group {ez.resource_group} "
         f"--query hardwareProfile.vmSize -o tsv"
     )
-    exit_code, vm_size = exec_command(ez, info_cmd)
-    exit_on_error(exit_code, vm_size)
+    _, vm_size = exec_command(ez, info_cmd)
     return vm_size
 
 def generate_devcontainer_json(ez, jupyter_port_number, token, 

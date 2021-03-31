@@ -3,7 +3,7 @@
 import click
 from os import path, system
 
-from azutil import exit_on_error, is_gpu, exec_script_using_ssh
+from azutil import is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
 
 @click.command()
@@ -59,9 +59,7 @@ def create(ez, vm_name, vm_size, image, check_dns):
         f"             --admin-username {ez.user_name}"
         f"             --public-ip-address-dns-name {vm_name}"
     )   
-    exit_code, _ = exec_command(ez, az_vm_create)
-    if exit_code != 0:
-        exit(1)
+    exec_command(ez, az_vm_create)
 
     # TODO: analyze output for correct flags
 
@@ -70,10 +68,7 @@ def create(ez, vm_name, vm_size, image, check_dns):
         f"{path.dirname(path.realpath(__file__))}/"
         f"{provision_vm_script}"
     )
-    exit_code, _ = exec_script_using_ssh(ez, provision_vm_script_path, vm_name, "")
-    if exit_code != 0:
-        exit(1)
-
+    exec_script_using_ssh(ez, provision_vm_script_path, vm_name, "")
     ez.active_remote_vm = vm_name 
     exit(0)
 
@@ -90,8 +85,7 @@ def ls(ez):
         f"az vm list -d --resource-group {ez.resource_group} "
         f"--query=\"[?powerState=='VM running'].[name]\" -o tsv"
     )
-    exit_code, output = exec_command(ez, ls_cmd)
-    exit_on_error(exit_code, output)
+    _, output = exec_command(ez, ls_cmd)
 
     print("RUNNNING VMs (* == current)")
     lines = output.splitlines()
@@ -166,9 +160,8 @@ def info(ez, vm_name):
     vm_size = get_vm_size(ez, vm_name)
 
     # Now use the vm_size to get hardware details 
-    exit_code, details = exec_command(ez, 
+    _, details = exec_command(ez, 
         f"az vm list-sizes -l {ez.region} --output tsv | grep {vm_size}")
-    exit_on_error(exit_code, details)
     specs = details.split("\t")
     print((
         f"VM INFO for {vm_name} size: {specs[2]}: "
