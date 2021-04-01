@@ -33,12 +33,14 @@ class Ez(object):
 
     # Runtime state
     logged_in: bool
+    jit_activated: bool
 
     def __init__(self, debug=False, trace=False, insiders=False):
         self.debug = debug 
         self.trace = trace
         self.insiders = insiders
         self.logged_in = False
+        self.jit_activated = False
         self.load()
 
     def load(self):

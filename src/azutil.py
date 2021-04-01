@@ -3,6 +3,7 @@
 from os import path, system
 from os import getcwd, makedirs, path, system
 from shutil import rmtree
+from time import sleep
 import json
 import shlex
 import subprocess
@@ -140,6 +141,9 @@ def jit_activate_vm(ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
     resource_group = f"{ez.workspace_name}-rg"
 
+    if ez.jit_activated:
+        return
+
     print(f"CHECKING if virtual machine {vm_name} is running...")
     if not is_vm_running(ez, vm_name):
         print(f"STARTING virtual machine {vm_name}...")
@@ -209,7 +213,14 @@ def jit_activate_vm(ez, vm_name) -> None:
     ez.debug_print(f"REQUESTING JIT activation for {vm_name}...")
     _, output = exec_command(ez, jit_command)
     ez.debug_print(f"RESULT {output}")
+
+    # HACKHACK sleep for 3 seconds to allow enough time for JIT activate
+    # to complete. Need to figure out how to wait on actual completion of
+    # jit activation
+    sleep(3) 
     print("JIT ACTIVATION COMPLETE")
+
+    ez.jit_activated = True
 
 def get_vm_size(ez, vm_name):
     """Return the VM size of vm_name"""
