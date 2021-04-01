@@ -183,8 +183,10 @@ def stop():
 @click.command()
 @click.option("--vm-name", "-v", required=True,
               help="Name of the vm to migrate the environment to")
+@click.option("--env-name", "-v", required=True,
+              help="Name of environment to start")
 @click.pass_obj
-def up(ez, vm_name):
+def up(ez, vm_name, env_name):
     """Migrate the current environment to a new VM"""
 
     # Let's assume that we are in a local environment for the purpose
@@ -206,6 +208,7 @@ def up(ez, vm_name):
     ez.active_remote_vm = vm_name
 
     # Check to see if there are uncommitted changes
+    patchfile_path = None
     exit_code, _ = exec_command(ez, 
         'git status | grep "Changes not staged for commit"', False)
     if exit_code == 0:
@@ -221,8 +224,18 @@ def up(ez, vm_name):
             f"/home/{ez.user_name}/tmp/changes.patch"
         )
         exec_command(ez, scp_cmd)
+        patchfile_path = path.expanduser("~/tmp/changes.patch")
 
-    else:
-        print(f"STARTING {git_remote_uri} on {vm_name}")
-
+    print(f"STARTING {git_remote_uri} on {vm_name}")
+    jupyter_port = 1235
+    token = "1234"
+    vm_size = ez.get_vm_size(vm_name)
+    has_gpu = is_gpu(vm_size)
+    build_container_image(ez, env_name, git_remote_uri, jupyter_port,
+                          vm_name, has_gpu, "code", True, patchfile_path)
+    path_to_vscode_project = generate_vscode_project(ez, getcwd(),
+                                                     git_remote_uri,
+                                                     jupyter_port, token,
+                                                     vm_name, has_gpu, True)
+    launch_vscode(ez, path_to_vscode_project)
     exit(0)
