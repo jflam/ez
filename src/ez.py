@@ -99,12 +99,14 @@ class Ez(object):
         if vm_name == '.':
             return '.'
 
+        self.debug_print(f"GET vm size for {vm_name}...")
         get_vm_size_cmd = (
             f"az vm show --name {vm_name} "
             f"--resource-group {self.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
         _, vm_size = exec_command(self, get_vm_size_cmd)
+        self.debug_print(f"RESULT: {vm_size}")
         return vm_size
 
     def debug_print(self, str):

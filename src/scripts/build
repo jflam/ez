@@ -88,8 +88,8 @@ export PS1=
 echo "  ${user_name}@$(hostname): ACTIVATING conda"
 
 # eval "$(/opt/miniconda/bin/conda shell.bash hook)" 
-eval "$(conda shell.bash hook)" 
-conda init # > /dev/null
+# eval "$(conda shell.bash hook)" 
+# conda init # > /dev/null
 
 if [[ $repo_path == "" ]]; then
     repo_path="./repo"

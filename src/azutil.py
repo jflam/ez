@@ -1,6 +1,8 @@
 # Utility functions for working with Azure
 
 from os import path, system
+from os import getcwd, makedirs, path, system
+from shutil import rmtree
 import json
 import shlex
 import subprocess
@@ -9,8 +11,10 @@ import sys
 def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
     """Execute script_name on vm_name.
     script_path must be an absolute path."""
-    if vm_name == None:
+    if vm_name is None:
         vm_name = ez.active_remote_vm
+
+    jit_activate_vm(ez, vm_name)
     cmd = shlex.quote(cmd)
 
     ssh_cmd = (
@@ -55,6 +59,10 @@ def exec_command(ez, command, fail_fast=True):
                     sys.stdout.write(output)
                     sys.stdout.flush()
 
+            if fail_fast:
+                print(f"ERROR: {cumulative}")
+                exit(process.returncode)
+
             return (process.returncode, cumulative.strip())
         except subprocess.CalledProcessError as err:
             error_message = err.output.decode(sys.stdout.encoding)
@@ -73,7 +81,7 @@ def is_gpu(vm_size):
 
     # TODO: have local detection logic for GPU within WSL 2 (or mac)
     if vm_size == '.':
-        return True     
+        return False     
 
     azure_gpu_sizes = [
         "Standard_NV6"
@@ -290,3 +298,130 @@ def generate_remote_settings_json(ez, jupyter_port_number, token):
         f'}}\n'
     )
     return remote_settings_json
+
+def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
+                          has_gpu, user_interface="code", 
+                          force_git_clone=False, patchfile_path=None):
+    """Build a container image either locally or remote"""
+    git_clone_flag = "--git-clone" if force_git_clone else ""
+    build_gpu_flag = "--gpu" if has_gpu else ""
+    is_local = True if vm_name == "." else False
+
+    # Generate command to launch build script
+    build_script_path = f"{path.dirname(path.realpath(__file__))}/scripts/build"
+    build_params = (
+        f"--env-name {env_name} "
+        f"--git-repo {git_uri} "
+        f"--port {jupyter_port} "
+        f"{git_clone_flag} "
+        f"--user-interface {user_interface} "
+        f"{build_gpu_flag} "
+        f"--user-name {ez.user_name} "
+    )
+
+    if patchfile_path is not None:
+        build_params += f"--patch-file {patchfile_path} "
+
+    # Execute script based on local vs remote case
+    if not is_local:
+        build_cmd = f"cat > /tmp/build; chmod 755 /tmp/build; /tmp/build {build_params}"
+    else:
+        build_cmd = f"{build_script_path} {build_params}"
+
+    ez.debug_print(f"BUILD command: {build_cmd}")
+    print(f"BUILDING {env_name} on {vm_name}...")
+    if not is_local:
+        ez.debug_print(f"EXECUTING build script on {vm_name}...")
+        exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
+    else:
+        ez.debug_print(f"EXECUTING build script locally...")
+        exec_command(ez, build_cmd)
+
+    ez.debug_print(f"DONE")
+
+def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name, 
+                            has_gpu, force_generate=False) -> str:
+    """Generate a surrogate VS Code project at dir. Returns path to the 
+    generated VS Code project."""
+    is_local = True if vm_name == "." else False
+
+    repo_name = path.basename(git_uri)
+    if not is_local:
+        local_dirname = f"{repo_name}_remote"
+    else:
+        local_dirname = repo_name
+
+    path_to_vsc_project = f"{dir}/{local_dirname}"
+    if path.exists(path_to_vsc_project) and force_generate:
+        ez.debug_print(f"REMOVING existing directory: {path_to_vsc_project}")
+        rmtree(path_to_vsc_project)
+
+    print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
+
+    # For local projects only, git clone into path_to_vsc_project
+    if is_local:
+        if not path.exists(path_to_vsc_project):
+            print(f"CLONING {git_uri} into {path_to_vsc_project}...")
+            exec_command(ez, f"git clone {git_uri} {repo_name}")
+        else:
+            print(
+                f"SKIPPING git clone of {git_uri} as there is already a "
+                f"{path_to_vsc_project} directory")
+
+    if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
+        makedirs(f"{path_to_vsc_project}/.devcontainer")
+    if not path.exists(f"{path_to_vsc_project}/.vscode"):
+        makedirs(f"{path_to_vsc_project}/.vscode")
+
+    devcontainer_path = (
+        f"{path_to_vsc_project}/.devcontainer/devcontainer.json")
+    devcontainer_json = generate_devcontainer_json(
+        ez, jupyter_port, token, is_local, has_gpu
+    )
+
+    print(f"GENERATE devcontainer.json: {devcontainer_path}")
+    with open(devcontainer_path, 'w') as file:
+        file.write(devcontainer_json)
+
+    settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
+    settings_json = generate_settings_json(ez, is_local, jupyter_port, token)
+
+    print(f"GENERATE settings.json: {settings_json_path}")
+    with open(settings_json_path, "w") as file:
+        file.write(settings_json)
+
+    if not is_local:
+        remote_settings_json_path = (
+            f"{path_to_vsc_project}/.vscode/remote_settings.json")
+        remote_settings_json = generate_remote_settings_json(ez, jupyter_port, token)
+
+        print(f"GENERATE remote_settings.json: {remote_settings_json_path}")
+        with open(remote_settings_json_path, "w") as file:
+            file.write(remote_settings_json)
+
+        write_settings_json_cmd = (
+            f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
+            f'easy/env/{ez.active_remote_env}/repo/.vscode; '
+            f'mv /tmp/settings.json /home/{ez.user_name}/'
+            f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
+        )
+        exec_script_using_ssh(ez, remote_settings_json_path, 
+                              vm_name, 
+                              write_settings_json_cmd)
+    
+    return path_to_vsc_project
+
+def launch_vscode(ez, dir):
+    """Launch either VS Code or VS Code Insiders on dir"""
+    vscode_cmd = "code-insiders" if ez.insiders else "code"
+    system(f"{vscode_cmd} {dir}")
+
+def install_local_dependencies():
+    """Install local dependencies and validate they are there"""
+
+    # install brew
+    # install wget
+    # install python/conda
+    # install jupyter-repo2docker
+    # install docker
+    # install ruamel.yaml (via conda!)
