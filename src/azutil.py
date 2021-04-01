@@ -307,7 +307,7 @@ def generate_remote_settings_json(ez, jupyter_port_number, token):
 
 def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
                           has_gpu, user_interface="code", 
-                          force_git_clone=False, patchfile_path=None):
+                          force_git_clone=False, patch_file=None):
     """Build a container image either locally or remote"""
     git_clone_flag = "--git-clone" if force_git_clone else ""
     build_gpu_flag = "--gpu" if has_gpu else ""
@@ -327,8 +327,8 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
         f"--user-name {ez.user_name} "
     )
 
-    if patchfile_path is not None:
-        build_params += f"--patch-file {patchfile_path} "
+    if patch_file is not None:
+        build_params += f"--patch-file {patch_file} "
 
     # Execute script based on local vs remote case
     if not is_local:

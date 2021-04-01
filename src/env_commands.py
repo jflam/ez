@@ -208,13 +208,13 @@ def up(ez, vm_name, env_name):
     ez.active_remote_vm = vm_name
 
     # Check to see if there are uncommitted changes
-    patchfile_path = None
+    patch_file = None
     exit_code, _ = exec_command(ez, 
         'git status | grep "Changes not staged for commit"', False)
     if exit_code == 0:
         print("STASHING uncommitted changes")
         exec_command(ez, "git stash")
-        exec_command(ez, "git stash -p --binary > ~/tmp/changes.patch")
+        exec_command(ez, "git stash show -p --binary > ~/tmp/changes.patch")
 
         print(f"COPYING changes.patch to {vm_name}")
         scp_cmd = (
@@ -224,7 +224,7 @@ def up(ez, vm_name, env_name):
             f"/home/{ez.user_name}/tmp/changes.patch"
         )
         exec_command(ez, scp_cmd)
-        patchfile_path = path.expanduser("~/tmp/changes.patch")
+        patch_file = "changes.patch"
 
     print(f"STARTING {git_remote_uri} on {vm_name}")
     jupyter_port = 1235
@@ -232,7 +232,7 @@ def up(ez, vm_name, env_name):
     vm_size = ez.get_vm_size(vm_name)
     has_gpu = is_gpu(vm_size)
     build_container_image(ez, env_name, git_remote_uri, jupyter_port,
-                          vm_name, has_gpu, "code", True, patchfile_path)
+                          vm_name, has_gpu, "code", True, patch_file)
     path_to_vscode_project = generate_vscode_project(ez, getcwd(),
                                                      git_remote_uri,
                                                      jupyter_port, token,
