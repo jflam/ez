@@ -49,8 +49,14 @@ def exec_command(ez, command, fail_fast=True):
                                        stderr=subprocess.STDOUT,
                                        shell=True)
             while True:
-                output = process.stdout.read(1).decode(sys.stdout.encoding)
-                cumulative += output
+                # HACKHACK swallow unicode decode errors until I figure out 
+                # what the right encoding for console output that does 
+                # progress indicators like % completions
+                try:
+                    output = process.stdout.read(1).decode(sys.stdout.encoding)
+                    cumulative += output
+                except UnicodeDecodeError as err:
+                    pass
 
                 if output == '' and process.poll() != None:
                     break
@@ -59,7 +65,7 @@ def exec_command(ez, command, fail_fast=True):
                     sys.stdout.write(output)
                     sys.stdout.flush()
 
-            if fail_fast:
+            if fail_fast and process.returncode != 0:
                 print(f"ERROR: {cumulative}")
                 exit(process.returncode)
 

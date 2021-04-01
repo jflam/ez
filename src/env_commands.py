@@ -183,7 +183,7 @@ def stop():
 @click.command()
 @click.option("--vm-name", "-v", required=True,
               help="Name of the vm to migrate the environment to")
-@click.option("--env-name", "-v", required=True,
+@click.option("--env-name", "-n", required=True,
               help="Name of environment to start")
 @click.pass_obj
 def up(ez, vm_name, env_name):
