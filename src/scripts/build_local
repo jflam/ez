@@ -79,13 +79,7 @@ fi
 
 export PS1=
 
-# Activate conda
-
-echo "  ${user_name}@$(hostname): ACTIVATING conda"
-
-eval "$(/opt/miniconda/bin/conda shell.bash hook)" 
-eval "$(conda shell.bash hook)" 
-conda init # > /dev/null
+# Local script we don't activate conda - assume it's activated already
 
 if [[ $repo_path == "" ]]; then
     repo_path="./repo"

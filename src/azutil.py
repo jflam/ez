@@ -314,7 +314,9 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
     is_local = True if vm_name == "." else False
 
     # Generate command to launch build script
-    build_script_path = f"{path.dirname(path.realpath(__file__))}/scripts/build"
+    build_script = "build_local" if is_local else "build"
+    build_script_path = (
+        f"{path.dirname(path.realpath(__file__))}/scripts/{build_script}")
     build_params = (
         f"--env-name {env_name} "
         f"--git-repo {git_uri} "
@@ -330,12 +332,18 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
 
     # Execute script based on local vs remote case
     if not is_local:
-        build_cmd = f"cat > /tmp/build; chmod 755 /tmp/build; /tmp/build {build_params}"
+        build_cmd = (
+            f"cat > /tmp/build; chmod 755 /tmp/build; "
+            f"/tmp/build {build_params}")
     else:
         build_cmd = f"{build_script_path} {build_params}"
 
     ez.debug_print(f"BUILD command: {build_cmd}")
-    print(f"BUILDING {env_name} on {vm_name}...")
+    if is_local:
+        print(f"BUILDING {env_name} on localhost ...")
+    else:
+        print(f"BUILDING {env_name} on {vm_name}...")
+
     if not is_local:
         ez.debug_print(f"EXECUTING build script on {vm_name}...")
         exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
@@ -399,7 +407,9 @@ def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name,
     if not is_local:
         remote_settings_json_path = (
             f"{path_to_vsc_project}/.vscode/remote_settings.json")
-        remote_settings_json = generate_remote_settings_json(ez, jupyter_port, token)
+        remote_settings_json = generate_remote_settings_json(ez, 
+                                                             jupyter_port, 
+                                                             token)
 
         print(f"GENERATE remote_settings.json: {remote_settings_json_path}")
         with open(remote_settings_json_path, "w") as file:
