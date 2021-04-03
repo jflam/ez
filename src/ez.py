@@ -142,6 +142,7 @@ def check_dependencies() -> bool:
     if not check_installed("jupyter-repo2docker", 
         "pip install jupyter-repo2docker"):
         return False
+    return True
 
 @click.group()
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
