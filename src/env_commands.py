@@ -38,7 +38,7 @@ def run(ez, env_name, git_uri, user_interface, vm_name, git_clone,
     has_gpu = is_gpu(vm_size)
 
     build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
-                          has_gpu, user_interface, git_clone)
+                          user_interface, git_clone)
     path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
                                                      jupyter_port, token, 
                                                      vm_name, has_gpu, 
@@ -118,7 +118,7 @@ def up(ez, vm_name, env_name):
     vm_size = ez.get_vm_size(vm_name)
     has_gpu = is_gpu(vm_size)
     build_container_image(ez, env_name, git_remote_uri, jupyter_port,
-                          vm_name, has_gpu, "code", True, patch_file)
+                          vm_name, "code", True, patch_file)
     path_to_vscode_project = generate_vscode_project(ez, getcwd(),
                                                      git_remote_uri,
                                                      jupyter_port, token,

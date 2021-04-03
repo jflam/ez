@@ -317,11 +317,10 @@ def generate_remote_settings_json(ez, jupyter_port_number, token):
     return remote_settings_json
 
 def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
-                          has_gpu, user_interface="code", 
-                          force_git_clone=False, patch_file=None):
+                          user_interface="code", force_git_clone=False, 
+                          patch_file=None):
     """Build a container image either locally or remote"""
     git_clone_flag = "--git-clone" if force_git_clone else ""
-    build_gpu_flag = "--gpu" if has_gpu else ""
     is_local = True if vm_name == "." else False
 
     # Generate command to launch build script
@@ -334,7 +333,6 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
         f"--port {jupyter_port} "
         f"{git_clone_flag} "
         f"--user-interface {user_interface} "
-        f"{build_gpu_flag} "
         f"--user-name {ez.user_name} "
     )
 
