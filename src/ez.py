@@ -1,5 +1,5 @@
 import click
-from os import path
+from os import path, system
 import configparser
 
 CONFIGURATION_FILENAME = "~/.ez.conf"
@@ -117,6 +117,32 @@ class Ez(object):
 
 # ez top-level command
 
+def check_installed(command: str, 
+                    install_help: str = None) -> bool:
+    """Check if command is installed and display install_help if not"""
+    returncode = system(f"which {command} > /dev/null")
+    if returncode == 0:
+        return True
+    else:
+        print(f"ERROR: required dependency {command} not installed")
+        if install_help is not None:
+            print(f"TO INSTALL: {install_help}")
+        return False
+
+def check_dependencies() -> bool:
+    """Install dependencies required for ez to run"""
+    if not check_installed("az", 
+        "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"):
+        return False
+    if not check_installed("docker", 
+        ("If you are using WSL2, you must install Docker Desktop on Windows. "
+         "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
+        )):
+        return False
+    if not check_installed("jupyter-repo2docker", 
+        "pip install jupyter-repo2docker"):
+        return False
+
 @click.group()
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
 @click.option("--trace", is_flag=True, help="Trace execution")
@@ -126,6 +152,8 @@ def ez(ctx, debug, trace, insiders):
     """Command-line interface for creating and using portable Python
     environments"""
     ctx.obj = Ez(debug, trace, insiders)
+    if not check_dependencies():
+        exit(1)
     def _save_context():
         ctx.obj.save()
     ctx.call_on_close(_save_context)
