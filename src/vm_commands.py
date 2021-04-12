@@ -3,7 +3,7 @@
 import click
 from os import path, system
 
-from azutil import is_gpu, exec_script_using_ssh
+from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
 
 @click.command()
@@ -43,10 +43,6 @@ def create(ez, vm_name, vm_size, image, check_dns):
     if is_gpu(vm_size):
         provision_vm_script = "provision-gpu"
 
-    # TODO: enable JIT access when creating the virtual machine
-    # https://docs.microsoft.com/en-us/rest/api/securitycenter/...
-    # jitnetworkaccesspolicies/createorupdate
-
     print((
         f"CREATING virtual machine {vm_name} size {vm_size} "
         f"in resource group {ez.resource_group}..."))
@@ -60,8 +56,9 @@ def create(ez, vm_name, vm_size, image, check_dns):
         f"             --public-ip-address-dns-name {vm_name}"
     )   
     exec_command(ez, az_vm_create)
-
     # TODO: analyze output for correct flags
+
+    enable_jit_access_on_vm(ez, vm_name)
 
     print(f"INSTALLING system software on virtual machine")
     provision_vm_script_path = (

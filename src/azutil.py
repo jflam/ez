@@ -1,6 +1,7 @@
 # Utility functions for working with Azure
 
-from os import path, system
+from getpass import getuser
+from os import path, system, environ
 from os import getcwd, makedirs, path, system
 from shutil import rmtree
 from time import sleep
@@ -262,6 +263,11 @@ def generate_devcontainer_json(ez, jupyter_port_number, token,
     else:
         run_args = ""
     
+    # Always run as interactive user when running locally?
+
+    if local:
+        ez.user_name = getuser()
+
     devcontainer_json = (
         f'{{\n'
         f'    "name": "on {container_location}",\n'
@@ -438,8 +444,24 @@ def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name,
 
 def launch_vscode(ez, dir):
     """Launch either VS Code or VS Code Insiders on dir"""
+
+    # This is launched in Windows, not WSL 2, so I need to get the path to the
+    # current WSL 2 directory from within WSL 2 The current WSL 2 distribution
+    # is stored in the environment variable WSL_DISTRO_NAME
+
+    dir_path = path.expanduser(dir).replace('/', '\\')
+    wsl_distro_name = environ["WSL_DISTRO_NAME"]    
+    wsl_path = f"\\\\wsl$\\{wsl_distro_name}{dir_path}"
+    ez.debug_print(f"PATH: {wsl_path}")
+
+    hex_dir_path = wsl_path.encode("utf-8").hex()
     vscode_cmd = "code-insiders" if ez.insiders else "code"
-    system(f"{vscode_cmd} {dir}")
+    cmdline = (
+        f"{vscode_cmd} --folder-uri "
+        f"vscode-remote://dev-container+{hex_dir_path}/"
+        f"workspaces/{ez.local_repo_name}")
+    ez.debug_print(f"ENCODED path: {cmdline}")
+    system(cmdline)
 
 def install_local_dependencies():
     """Install local dependencies and validate they are there"""
@@ -450,3 +472,65 @@ def install_local_dependencies():
     # install jupyter-repo2docker
     # install docker
     # install ruamel.yaml (via conda!)
+
+def enable_jit_access_on_vm(ez, vm_name: str):
+
+    vm_show_cmd = (
+        f"az vm show -n {vm_name} -g {ez.resource_group} "
+        f"-o tsv --query \"[id, location]\""
+    )
+    _, results = exec_command(ez, vm_show_cmd)
+    vm_id, vm_location = results.splitlines()
+    ez.debug_print(f"RESULT: virtual machine id {vm_id}")
+
+    # Generate the URI of the JIT activate endpoint REST API
+
+    endpoint = (
+        f"https://management.azure.com/subscriptions/{ez.subscription}/"
+        f"resourceGroups/{ez.resource_group}/providers/"
+        f"Microsoft.Security/locations/{vm_location}/"
+        f"jitNetworkAccessPolicies/default?api-version=2020-01-01"
+    )
+
+    # Generate the JSON body of REST call to endpoint
+
+    body = {
+        "kind": "Basic",
+        "properties": {
+            "virtualMachines": [
+                {
+                    "id": (
+                        f"/subscriptions/{ez.subscription}"
+                        f"/resourceGroups/{ez.resource_group}"
+                        f"/providers/Microsoft.Compute"
+                        f"/virtualMachines/{vm_name}"
+                    ),
+                    "ports": [
+                        {
+                            "number": 22,
+                            "protocol": "*",
+                            "allowedSourceAddressPrefix": "*",
+                            "maxRequestAccessDuration": "PT3H"
+                        }
+                    ]
+                }
+            ],
+            "provisioningState": "Succeeded",
+        },
+        "id": (
+            f"/subscriptions/{ez.subscription}"
+            f"/resourceGroups/{ez.resource_group}"
+            f"/providers/Microsoft.Security"
+            f"/locations/{vm_location}"
+            f"/jitNetworkAccessPolicies/default"
+        ),
+        "name": "default",
+        "type": "Microsoft.Security/locations/jitNetworkAccessPolicies",
+        "location": vm_location
+    }
+    body_json = shlex.quote(json.dumps(body))
+    jit_command=f"az rest --method post --uri {endpoint} --body {body_json}"
+    ez.debug_print(f"JIT ENABLE command: {jit_command}")
+    print(f"ENABLING JIT activation for {vm_name}...")
+    _, output = exec_command(ez, jit_command)
+    ez.debug_print(f"RESULT {output}")
