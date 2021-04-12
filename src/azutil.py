@@ -2,7 +2,7 @@
 
 from getpass import getuser
 from os import path, system, environ
-from os import getcwd, makedirs, path, system
+from os import makedirs, path, system
 from shutil import rmtree
 from time import sleep
 import json
