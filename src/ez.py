@@ -18,6 +18,7 @@ class Ez(object):
     debug: str
     trace: str
     insiders: bool
+    disable_jit: bool
 
     # Workspace
     workspace_name: str
@@ -35,12 +36,16 @@ class Ez(object):
     logged_in: bool
     jit_activated: bool
 
-    def __init__(self, debug=False, trace=False, insiders=False):
+    def __init__(self, debug=False, trace=False, insiders=False, 
+                 disable_jit=False):
         self.debug = debug 
         self.trace = trace
         self.insiders = insiders
         self.logged_in = False
         self.jit_activated = False
+        self.disable_jit = disable_jit
+        if disable_jit:
+            self.jit_activated = True
         self.load()
 
     def load(self):
@@ -148,11 +153,12 @@ def check_dependencies() -> bool:
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
 @click.option("--trace", is_flag=True, help="Trace execution")
 @click.option("--insiders", is_flag=True, help="Run using VS Code Insiders")
+@click.option("--disable-jit", is_flag=True, help="Disable JIT activation")
 @click.pass_context
-def ez(ctx, debug, trace, insiders):
+def ez(ctx, debug, trace, insiders, disable_jit):
     """Command-line interface for creating and using portable Python
     environments"""
-    ctx.obj = Ez(debug, trace, insiders)
+    ctx.obj = Ez(debug, trace, insiders, disable_jit)
     if not check_dependencies():
         exit(1)
     def _save_context():

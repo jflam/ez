@@ -58,11 +58,12 @@ def create(ez, vm_name, vm_size, image, check_dns):
     exec_command(ez, az_vm_create)
     # TODO: analyze output for correct flags
 
-    enable_jit_access_on_vm(ez, vm_name)
+    if not ez.disable_jit:
+        enable_jit_access_on_vm(ez, vm_name)
 
     print(f"INSTALLING system software on virtual machine")
     provision_vm_script_path = (
-        f"{path.dirname(path.realpath(__file__))}/"
+        f"{path.dirname(path.realpath(__file__))}/scripts/"
         f"{provision_vm_script}"
     )
     exec_script_using_ssh(ez, provision_vm_script_path, vm_name, "")
