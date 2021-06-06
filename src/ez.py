@@ -6,7 +6,7 @@ CONFIGURATION_FILENAME = "~/.ez.conf"
 
 # Import sub-commands
 import workspace_commands
-import vm_commands
+import compute_commands
 import env_commands
 
 from azutil import exec_command
@@ -29,7 +29,8 @@ class Ez(object):
     user_name: str
 
     # Remotes
-    active_remote_vm: str 
+    active_remote_compute: str 
+    active_remote_compute_type: str 
     active_remote_env: str
 
     # Runtime state
@@ -61,7 +62,10 @@ class Ez(object):
             self.region = config["Workspace"]["region"]
             self.private_key_path = config["Workspace"]["private_key_path"]
             self.user_name = config["Workspace"]["user_name"]
-            self.active_remote_vm = config["Remotes"]["active_remote_vm"]
+            self.active_remote_compute = (
+                config["Remotes"]["active_remote_compute"])
+            self.active_remote_compute_type = (
+                config["Remotes"]["active_remote_compute_type"])
             self.active_remote_env = config["Remotes"]["active_remote_env"]
         else:
             self.workspace_name = "ez-workspace"
@@ -70,7 +74,8 @@ class Ez(object):
             self.region = ""
             self.private_key_path = ""
             self.user_name = "ezuser"
-            self.active_remote_vm = ""
+            self.active_remote_compute = ""
+            self.active_remote_compute_type = ""
             self.active_remote_env = ""
 
     def save(self):
@@ -84,37 +89,42 @@ class Ez(object):
         config["Workspace"]["region"] = self.region
         config["Workspace"]["private_key_path"] = self.private_key_path
         config["Workspace"]["user_name"] = self.user_name
-        config["Remotes"]["active_remote_vm"] = self.active_remote_vm
+        config["Remotes"]["active_remote_compute"] = (
+            self.active_remote_compute)
+        config["Remotes"]["active_remote_compute_type"] = (
+            self.active_remote_compute_type)
         config["Remotes"]["active_remote_env"] = self.active_remote_env
         with open(path.expanduser(CONFIGURATION_FILENAME), 'w') as file:
             config.write(file)
     
-    def get_active_vm_name(self, vm_name) -> str:
-        """Get the active VM name or exit"""
-        if vm_name == None:
-            if self.active_remote_vm == "":
-                print("No active remote VM, so you must specify --vm-name")
+    def get_active_compute_name(self, compute_name) -> str:
+        """Get the active compute name or exit. Passing None for compute_name
+        returns the active remote compute, if it is set."""
+        if compute_name == None:
+            if self.active_remote_compute == "":
+                print("No active remote compute, must specify --compute-name")
                 exit(1)
             else:
-                return self.active_remote_vm
+                return self.active_remote_compute
         else:
-            return vm_name
+            return compute_name
 
-    def get_vm_size(self, vm_name) -> str:
-        """Return the vm size of vm_name"""
+    def get_compute_size(self, compute_name) -> str:
+        """Return the compute size of compute_name"""
         # Special return value for localhost
-        if vm_name == '.':
+        # TODO: handle case where compute_type is AKS
+        if compute_name == '.':
             return '.'
 
-        self.debug_print(f"GET vm size for {vm_name}...")
-        get_vm_size_cmd = (
-            f"az vm show --name {vm_name} "
+        self.debug_print(f"GET compute size for {compute_name}...")
+        get_compute_size_cmd = (
+            f"az vm show --name {compute_name} "
             f"--resource-group {self.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
-        _, vm_size = exec_command(self, get_vm_size_cmd)
-        self.debug_print(f"RESULT: {vm_size}")
-        return vm_size
+        _, compute_size = exec_command(self, get_compute_size_cmd)
+        self.debug_print(f"RESULT: {compute_size}")
+        return compute_size
 
     def debug_print(self, str):
         if self.debug:
@@ -176,21 +186,21 @@ workspace.add_command(workspace_commands.create)
 workspace.add_command(workspace_commands.delete)
 workspace.add_command(workspace_commands.ls)
 
-# vm sub-commands
+# compute sub-commands
 
 @ez.group()
-def vm():
-    """Manage virtual machines"""
+def compute():
+    """Manage compute nodes"""
     pass
 
-vm.add_command(vm_commands.create)
-vm.add_command(vm_commands.delete)
-vm.add_command(vm_commands.ls)
-vm.add_command(vm_commands.start)
-vm.add_command(vm_commands.stop)
-vm.add_command(vm_commands.select)
-vm.add_command(vm_commands.info)
-vm.add_command(vm_commands.ssh)
+compute.add_command(compute_commands.create)
+compute.add_command(compute_commands.delete)
+compute.add_command(compute_commands.ls)
+compute.add_command(compute_commands.start)
+compute.add_command(compute_commands.stop)
+compute.add_command(compute_commands.select)
+compute.add_command(compute_commands.info)
+compute.add_command(compute_commands.ssh)
 
 # environment sub-commands
 

@@ -14,7 +14,7 @@ def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
     """Execute script_name on vm_name.
     script_path must be an absolute path."""
     if vm_name is None:
-        vm_name = ez.active_remote_vm
+        vm_name = ez.active_remote_compute
 
     jit_activate_vm(ez, vm_name)
     cmd = shlex.quote(cmd)
@@ -140,6 +140,11 @@ def is_vm_running(ez, vm_name) -> bool:
 
 def jit_activate_vm(ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
+    # TODO: this is broken right now, they changed the resource ID
+    # PolicyNotFound error coming back from the machine
+    # while attempting this. This issue has some code that might
+    # be helpful (though it seems to old to be helpful in this case)
+    # https://github.com/Azure/azure-cli/issues/9855
     resource_group = f"{ez.workspace_name}-rg"
 
     if ez.jit_activated:
@@ -225,7 +230,7 @@ def jit_activate_vm(ez, vm_name) -> None:
 
 def get_vm_size(ez, vm_name):
     """Return the VM size of vm_name"""
-    vm_name = ez.get_active_vm_name(vm_name)
+    vm_name = ez.get_active_compute_name(vm_name)
     info_cmd = (
         f"az vm get-instance-view --name {vm_name} "
         f"--resource-group {ez.resource_group} "
@@ -256,7 +261,7 @@ def generate_devcontainer_json(ez, jupyter_port_number, token,
         container_jupyter_dir = f"/workspaces/"
         container_jupyter_log = f"/workspaces/jupyter.log"
         container_location = (
-            f"{ez.active_remote_vm}.{ez.region}.cloudapp.azure.com")
+            f"{ez.active_remote_compute}.{ez.region}.cloudapp.azure.com")
     
     if has_gpu:
         run_args = '"runArgs": ["--gpus=all", "--ipc=host"],'
@@ -299,7 +304,8 @@ def generate_settings_json(ez, is_local, jupyter_port_number, token):
     if not is_local:
         settings_json = (
             f'{{\n'
-            f'    "docker.host": "ssh://{ez.user_name}@{ez.active_remote_vm}.'
+            f'    "docker.host": '
+            f'"ssh://{ez.user_name}@{ez.active_remote_compute}.'
             f'{ez.region}.cloudapp.azure.com",\n'
             f'}}\n'
         )
