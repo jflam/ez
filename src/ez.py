@@ -112,19 +112,27 @@ class Ez(object):
     def get_compute_size(self, compute_name) -> str:
         """Return the compute size of compute_name"""
         # Special return value for localhost
-        # TODO: handle case where compute_type is AKS
         if compute_name == '.':
             return '.'
 
-        self.debug_print(f"GET compute size for {compute_name}...")
-        get_compute_size_cmd = (
-            f"az vm show --name {compute_name} "
-            f"--resource-group {self.resource_group} "
-            f"--query hardwareProfile.vmSize -o tsv"
-        )
-        _, compute_size = exec_command(self, get_compute_size_cmd)
-        self.debug_print(f"RESULT: {compute_size}")
-        return compute_size
+        if self.active_remote_compute_type == "aks":
+            # TODO: handle case where compute_type is AKS
+            # For now, it always returns a GPU-enabled SKU
+            return "Standard_NC6_Promo"
+        elif self.active_remote_compute_type == "vm":
+            self.debug_print(f"GET compute size for {compute_name}...")
+            get_compute_size_cmd = (
+                f"az vm show --name {compute_name} "
+                f"--resource-group {self.resource_group} "
+                f"--query hardwareProfile.vmSize -o tsv"
+            )
+            _, compute_size = exec_command(self, get_compute_size_cmd)
+            self.debug_print(f"RESULT: {compute_size}")
+            return compute_size
+        else:
+            print(f"Unknown active_remote_compute_type in ~/.ez.conf "
+                f"detected: {self.active_remote_compute_type}")
+            exit(1)
 
     def debug_print(self, str):
         if self.debug:

@@ -5,6 +5,22 @@ import click
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 
+def run_aks(ez, env_name, git_uri, jupyter_port, compute_name,
+            user_interface, git_clone, token, has_gpu, force_generate):
+    """Run the environment in AKS"""
+    print("TODO: implement this")
+
+def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
+           user_interface, git_clone, token, has_gpu, force_generate):
+    """Run the environment in a VM"""
+    build_container_image(ez, env_name, git_uri, jupyter_port, compute_name,
+                          user_interface, git_clone)
+    path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
+                                                     jupyter_port, token, 
+                                                     compute_name, has_gpu, 
+                                                     force_generate)
+    launch_vscode(ez, path_to_vscode_project)
+
 @click.command()
 @click.option("--env-name", "-n", required=True, 
               help="Name of environment to start")
@@ -35,17 +51,18 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
     jupyter_port = 1235
     token = "1234"
 
-    # TODO: make this work with AKS
     compute_size = ez.get_compute_size(compute_name)
     has_gpu = is_gpu(compute_size)
 
-    build_container_image(ez, env_name, git_uri, jupyter_port, compute_name,
-                          user_interface, git_clone)
-    path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
-                                                     jupyter_port, token, 
-                                                     compute_name, has_gpu, 
-                                                     force_generate)
-    launch_vscode(ez, path_to_vscode_project)
+    if ez.active_remote_compute_type == 'vm':
+        run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
+               user_interface, git_clone, token, has_gpu, force_generate)
+    elif ez.active_remote_compute_type == 'aks':
+        run_aks()
+    else:
+        print(f"Unknown active_remote_compute_type in ~/.ez.conf: "
+            f"{ez.active_remote_compute_type}")
+        exit(1)
     exit(0)
 
 @click.command()
