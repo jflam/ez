@@ -114,4 +114,5 @@ fi
 
 echo "  ${user_name}@$(hostname): BUILDING container image using repo2docker"
 jupyter-repo2docker --no-run --image-name $env_name --user-id $user_id --user-name $user_name $repo_path
+
 exit 0

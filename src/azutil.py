@@ -463,10 +463,15 @@ def launch_vscode(ez, dir):
 
     hex_dir_path = wsl_path.encode("utf-8").hex()
     vscode_cmd = "code-insiders" if ez.insiders else "code"
-    cmdline = (
-        f"{vscode_cmd} --folder-uri "
-        f"vscode-remote://dev-container+{hex_dir_path}/"
-        f"workspaces/{ez.local_repo_name}")
+    # TODO: this isn't working on remote containers right now
+    # cmdline = (
+    #     f"{vscode_cmd} --folder-uri "
+    #     f"vscode-remote://dev-container+{hex_dir_path}/"
+    #     f"workspaces/{ez.local_repo_name}")
+    # Reverting to simpler form that forces the user to reopen in container
+    # NOTE that this is opening from the WSL2 side not the Windows side
+    # which is what the commented out code above tries (but fails) to do
+    cmdline = f"{vscode_cmd} {path.expanduser(dir)}"
     ez.debug_print(f"ENCODED path: {cmdline}")
     system(cmdline)
 
