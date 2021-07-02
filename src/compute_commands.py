@@ -13,7 +13,7 @@ from azutil import exec_command, jit_activate_vm, get_vm_size
               help="Size of Azure VM or '.' for local creation")
 @click.option("--compute-type", "-t", default="vm",
               help=("Type of compute: vm (virtual machine) or "
-              "aks (Azure Kubernetes Service)"))
+              "k8s (Kubernetes)"))
 @click.option("--image", "-i", default="UbuntuLTS", 
               help="Image to use to create the VM (default UbuntuLTS)")
 @click.option("--check-dns", "-c", is_flag=True, 
@@ -76,9 +76,9 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
         exit(0)
-    elif compute_type == "aks":
+    elif compute_type == "k8s":
         # TODO: implement
-        print(f"NOT IMPLEMENTED --compute-type=aks")
+        print(f"NOT IMPLEMENTED create --compute-type=k8s. Manually create.")
         exit(1)
     else:
         print(f"Unknown --compute-type: {compute_type}")
@@ -158,18 +158,29 @@ def ssh(ez, compute_name):
 
 @click.command()
 @click.option("--compute-name", "-n", help="Name of compute node")
+@click.option("--compute-type", "-t", default="vm",
+              help=("Type of compute: vm (virtual machine) or "
+              "k8s (Kubernetes)"))
 @click.pass_obj
-def select(ez, compute_name):
+def select(ez, compute_name, compute_type):
     """Select a compute node"""
     compute_name = ez.get_active_compute_name(compute_name)
-    # TODO: based on the name, can we determine if AKS or VM?
-    _ = get_vm_size(ez, compute_name)
 
-    # Just select the compute node now
-    print(f"SELECTING VM {compute_name}")
-    ez.active_remote_compute = compute_name
-    ez.active_remote_env = ""
-    exit(0)
+    if compute_type == "vm":
+        _ = get_vm_size(ez, compute_name)
+
+        # Just select the compute node now
+        print(f"SELECTING VM {compute_name}")
+        ez.active_remote_compute = compute_name
+        ez.active_remote_compute_type = compute_type
+        ez.active_remote_env = ""
+        exit(0)
+    elif compute_type == "k8s":
+        exec_command(ez, f"kubectl config use-context {compute_name}")
+        ez.active_remote_compute = compute_name
+        ez.active_remote_compute_type = compute_type
+        ez.active_remote_env = ""
+        exit(0)
 
 @click.command()
 @click.option("--compute-name", "-n", help="Name of compute node")
