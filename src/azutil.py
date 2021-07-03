@@ -314,6 +314,8 @@ def generate_settings_json(ez, is_local, jupyter_port_number, token):
             f'{{\n'
             f'    "python.dataScience.jupyterServerURI": "http://localhost:'
             f'{jupyter_port_number}/?token={token}",\n'
+            # TODO: conditional for non native notebooks?
+            f'    "jupyter.jupyterServerType": "remote",\n'
             f'}}\n'
         )
 
@@ -376,7 +378,8 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
     ez.debug_print(f"DONE")
 
 def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name, 
-                            has_gpu, force_generate=False) -> str:
+                            has_gpu, force_generate=False, 
+                            is_k8s = False) -> str:
     """Generate a surrogate VS Code project at dir. Returns path to the 
     generated VS Code project."""
     is_local = True if vm_name == "." else False
@@ -404,20 +407,23 @@ def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name,
                 f"SKIPPING git clone of {git_uri} as there is already a "
                 f"{path_to_vsc_project} directory")
 
-    if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
-        makedirs(f"{path_to_vsc_project}/.devcontainer")
+    # Do not generate .devcontainer for k8s
+    if not is_k8s:
+        if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
+            makedirs(f"{path_to_vsc_project}/.devcontainer")
+
     if not path.exists(f"{path_to_vsc_project}/.vscode"):
         makedirs(f"{path_to_vsc_project}/.vscode")
 
-    devcontainer_path = (
-        f"{path_to_vsc_project}/.devcontainer/devcontainer.json")
-    devcontainer_json = generate_devcontainer_json(
-        ez, jupyter_port, token, is_local, has_gpu
-    )
-
-    print(f"GENERATE devcontainer.json: {devcontainer_path}")
-    with open(devcontainer_path, 'w') as file:
-        file.write(devcontainer_json)
+    if not is_k8s:
+        devcontainer_path = (
+            f"{path_to_vsc_project}/.devcontainer/devcontainer.json")
+        devcontainer_json = generate_devcontainer_json(
+            ez, jupyter_port, token, is_local, has_gpu
+        )
+        print(f"GENERATE devcontainer.json: {devcontainer_path}")
+        with open(devcontainer_path, 'w') as file:
+            file.write(devcontainer_json)
 
     settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
     settings_json = generate_settings_json(ez, is_local, jupyter_port, token)

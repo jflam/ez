@@ -115,7 +115,7 @@ class Ez(object):
         if compute_name == '.':
             return '.'
 
-        if self.active_remote_compute_type == "aks":
+        if self.active_remote_compute_type == "k8s":
             # TODO: handle case where compute_type is AKS
             # For now, it always returns a GPU-enabled SKU
             return "Standard_NC6_Promo"

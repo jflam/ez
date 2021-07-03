@@ -5,10 +5,36 @@ import click
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 
-def run_aks(ez, env_name, git_uri, jupyter_port, compute_name,
+def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
-    """Run the environment in AKS"""
-    print("TODO: implement this")
+    """Run the environment in Kubernetes"""
+    path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
+                                                     jupyter_port, token, 
+                                                     ".", has_gpu, 
+                                                     force_generate, True)
+
+    # ASSUME that if path_to_vscode_project exists that we have built the
+    # image already
+    if not path.exists(path_to_vscode_project):
+        build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
+                    f"--no-run {path_to_vscode_project}")
+        print(f"BUILD Docker image locally: {build_cmd}")
+        exec_command(ez, build_cmd)
+        docker_cmd = (f"docker push jflam/{env_name}")
+        print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
+        exec_command(ez, docker_cmd)
+    
+    kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} jflam/{env_name} "
+               f"nohup jupyter notebook --no-browser --port {jupyter_port} "
+               f"--ip=0.0.0.0 --NotebookApp.token={token} .")
+
+    print(f"LAUNCH vscode {path_to_vscode_project}")
+    launch_vscode(ez, path_to_vscode_project)
+
+    # kdo will block so that it syncs local filesystem into the pod
+    # CTRL+C will terminate.
+    print(f"START pod {kdo_cmd}")
+    exec_command(ez, kdo_cmd)
 
 def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
@@ -57,8 +83,9 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
     if ez.active_remote_compute_type == 'vm':
         run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
                user_interface, git_clone, token, has_gpu, force_generate)
-    elif ez.active_remote_compute_type == 'aks':
-        run_aks()
+    elif ez.active_remote_compute_type == 'k8s':
+        run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
+                user_interface, git_clone, token, has_gpu, force_generate)
     else:
         print(f"Unknown active_remote_compute_type in ~/.ez.conf: "
             f"{ez.active_remote_compute_type}")
