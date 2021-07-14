@@ -1,7 +1,7 @@
 # env commands
 
 from os import getcwd, path
-import click
+import click, random, uuid
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 
@@ -90,9 +90,8 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
     ez.active_remote_env = env_name
     ez.local_repo_name = path.basename(git_uri)
 
-    # TODO: random numbers
-    jupyter_port = 1235
-    token = "1234"
+    jupyter_port = random.randint(1024, 8192)
+    token = uuid.uuid4().hex 
 
     compute_size = ez.get_compute_size(compute_name)
     has_gpu = is_gpu(compute_size)
