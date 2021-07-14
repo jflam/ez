@@ -5,6 +5,16 @@ import click
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 
+def launch_user_interface(ez, user_interface, path_to_vscode_project, 
+                          jupyter_port, token):
+    """Bind user_interface to the running instance"""
+    if user_interface == "code":
+        print(f"LAUNCH vscode {path_to_vscode_project}")
+        launch_vscode(ez, path_to_vscode_project)
+    elif user_interface == "notebook" or user_interface == "lab":
+        print(f"LAUNCH classic Jupyter "
+              f"http://localhost:{jupyter_port}?token={token}")
+
 def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
     """Run the environment in Kubernetes"""
@@ -13,8 +23,7 @@ def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
                                                      ".", has_gpu, 
                                                      force_generate, True)
 
-    # ASSUME that if path_to_vscode_project exists that we have built the
-    # image already
+    # ASSUME if path_to_vscode_project exists that image built alredy
     if not path.exists(path_to_vscode_project):
         build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
                     f"--no-run {path_to_vscode_project}")
@@ -23,17 +32,23 @@ def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
         docker_cmd = (f"docker push jflam/{env_name}")
         print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
         exec_command(ez, docker_cmd)
-    
+
+    launch_user_interface(ez, user_interface, path_to_vscode_project, 
+                          jupyter_port, token)
+
+    jupyter_variant = "notebook"
+    if user_interface == "lab":
+        jupyter_variant = "lab"
+
     kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} jflam/{env_name} "
-               f"nohup jupyter notebook --no-browser --port {jupyter_port} "
-               f"--ip=0.0.0.0 --NotebookApp.token={token} .")
+               f"nohup jupyter {jupyter_variant} --no-browser "
+               f"--port {jupyter_port} --ip=0.0.0.0 "
+               f"--NotebookApp.token={token} .")
 
-    print(f"LAUNCH vscode {path_to_vscode_project}")
-    launch_vscode(ez, path_to_vscode_project)
-
-    # kdo will block so that it syncs local filesystem into the pod
+    # kdo blocks while syncing local filesystem into the pod
     # CTRL+C will terminate.
     print(f"START pod {kdo_cmd}")
+    print("TERMINATE using CTRL+C")
     exec_command(ez, kdo_cmd)
 
 def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
@@ -45,7 +60,9 @@ def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
                                                      jupyter_port, token, 
                                                      compute_name, has_gpu, 
                                                      force_generate)
-    launch_vscode(ez, path_to_vscode_project)
+
+    launch_user_interface(ez, user_interface, path_to_vscode_project, 
+                          jupyter_port, token)
 
 @click.command()
 @click.option("--env-name", "-n", required=True, 
