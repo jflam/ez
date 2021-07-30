@@ -40,7 +40,9 @@ def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
     if user_interface == "lab":
         jupyter_variant = "lab"
 
-    kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} jflam/{env_name} "
+    kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} "
+               "--spec '{\"resources\":{\"limits\":{\"nvidia.com/gpu\":\"1\"}}}' "
+               f"jflam/{env_name} "
                f"nohup jupyter {jupyter_variant} --no-browser "
                f"--port {jupyter_port} --ip=0.0.0.0 "
                f"--NotebookApp.token={token} .")
