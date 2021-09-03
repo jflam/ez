@@ -145,10 +145,10 @@ def jit_activate_vm(ez, vm_name) -> None:
     # while attempting this. This issue has some code that might
     # be helpful (though it seems to old to be helpful in this case)
     # https://github.com/Azure/azure-cli/issues/9855
-    resource_group = f"{ez.workspace_name}-rg"
-
-    if ez.jit_activated:
+    if ez.disable_jit:
         return
+
+    resource_group = f"{ez.workspace_name}-rg"
 
     print(f"CHECKING if virtual machine {vm_name} is running...")
     if not is_vm_running(ez, vm_name):
@@ -494,6 +494,8 @@ def install_local_dependencies():
     # install ruamel.yaml (via conda!)
 
 def enable_jit_access_on_vm(ez, vm_name: str):
+    if ez.disable_jit:
+        return 
 
     vm_show_cmd = (
         f"az vm show -n {vm_name} -g {ez.resource_group} "
