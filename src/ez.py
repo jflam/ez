@@ -1,6 +1,8 @@
 import click
-from os import path, system
 import configparser
+
+from os import path, system
+from rich import print
 
 CONFIGURATION_FILENAME = "~/.ez.conf"
 
@@ -139,10 +141,17 @@ class Ez(object):
             print(str)
 
 # ez top-level command
+from rich.console import Console 
+from rich.text import Text 
 
 def check_installed(command: str, 
-                    install_help: str = None) -> bool:
+                    install_help: str = None,
+                    force = False) -> bool:
     """Check if command is installed and display install_help if not"""
+    if force:
+        console = Console()
+        console.print(f"Checking: {command}", style="green")
+        
     returncode = system(f"which {command} > /dev/null")
     if returncode == 0:
         return True
@@ -152,18 +161,22 @@ def check_installed(command: str,
             print(f"TO INSTALL: {install_help}")
         return False
 
-def check_dependencies() -> bool:
+def check_dependencies(force = False) -> bool:
     """Install dependencies required for ez to run"""
     if not check_installed("az", 
-        "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"):
+        ("The Azure Command Line Interface (CLI) must be installed to "
+         "communicate with Azure.\n"
+        "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"), force):
         return False
     if not check_installed("docker", 
-        ("If you are using WSL2, you must install Docker Desktop on Windows. "
-         "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
-        )):
+        ("Cannot find docker, which is needed to run the ez containers\n"
+        "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
+        ), force):
         return False
     if not check_installed("jupyter-repo2docker", 
-        "pip install jupyter-repo2docker"):
+        ("The Python package repo2docker must be installed to generate the "
+         "container images used by ez.\n"
+        "pip install jupyter-repo2docker"), force):
         return False
     return True
 
@@ -172,12 +185,13 @@ def check_dependencies() -> bool:
 @click.option("--trace", is_flag=True, help="Trace execution")
 @click.option("--insiders", is_flag=True, help="Run using VS Code Insiders")
 @click.option("--disable-jit", is_flag=True, help="Disable JIT activation")
+@click.option("--dependencies", is_flag=True, help="Force check dependencies")
 @click.pass_context
-def ez(ctx, debug, trace, insiders, disable_jit):
+def ez(ctx, debug, trace, insiders, disable_jit, dependencies):
     """Command-line interface for creating and using portable Python
     environments"""
     ctx.obj = Ez(debug, trace, insiders, disable_jit)
-    if not check_dependencies():
+    if not check_dependencies(dependencies):
         exit(1)
     def _save_context():
         ctx.obj.save()
