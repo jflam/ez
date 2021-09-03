@@ -5,6 +5,7 @@ from os import path, system
 
 from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
+from rich import print
 
 @click.command()
 @click.option("--compute-name", "-n", required=True, 
@@ -103,7 +104,7 @@ def ls(ez):
     lines = output.splitlines()
     for line in lines:
         if line == ez.active_remote_compute:
-            print(f"* {line}")
+            print(f"* [green]{line}[/green]")
         else:
             print(f"  {line}")
 
