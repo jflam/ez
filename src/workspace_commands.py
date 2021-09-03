@@ -5,8 +5,6 @@ import click
 from ez import CONFIGURATION_FILENAME
 from os import path, system
 from rich import print
-from rich.console import Console 
-from rich.text import Text 
 
 @click.command()
 @click.option("--workspace-name", "-n", default="ez-workspace", 
