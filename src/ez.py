@@ -187,10 +187,12 @@ def check_dependencies(force = False) -> bool:
 @click.option("--dependencies", is_flag=True, help="Force check dependencies")
 @click.option("--disable-jit", is_flag=True, help="Disable JIT activation")
 @click.pass_context
-def ez(ctx, debug, trace, insiders, dependencies, disable_jit=True):
+def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
     environments"""
-    ctx.obj = Ez(debug, trace, insiders, disable_jit)
+    # TODO: restore this once jit support is back
+    # ctx.obj = Ez(debug, trace, insiders, disable_jit)
+    ctx.obj = Ez(debug, trace, insiders, True)
     if not check_dependencies(dependencies):
         exit(1)
     def _save_context():
@@ -224,6 +226,7 @@ compute.add_command(compute_commands.stop)
 compute.add_command(compute_commands.select)
 compute.add_command(compute_commands.info)
 compute.add_command(compute_commands.ssh)
+compute.add_command(compute_commands.install_system)
 
 # environment sub-commands
 

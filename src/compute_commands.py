@@ -65,8 +65,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
         exec_command(ez, az_vm_create)
         # TODO: analyze output for correct flags
 
-        if not ez.disable_jit:
-            enable_jit_access_on_vm(ez, compute_name)
+        enable_jit_access_on_vm(ez, compute_name)
 
         print(f"INSTALLING system software on virtual machine")
         provision_vm_script_path = (
@@ -84,6 +83,26 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
     else:
         print(f"Unknown --compute-type: {compute_type}")
         exit(1)
+
+# TODO: remove this - this is temporary to unblock
+@click.option("--compute-name", "-n", required=True, 
+              help="Name of compute to create")
+@click.option("--compute-size", "-s", 
+              help="Size of Azure VM or '.' for local creation")
+@click.command()
+@click.pass_obj
+def install_system(ez, compute_name, compute_size):
+    print(f"INSTALLING system software on virtual machine")
+    provision_vm_script = "provision-cpu"
+    if is_gpu(compute_size):
+        provision_vm_script = "provision-gpu"
+    provision_vm_script_path = (
+        f"{path.dirname(path.realpath(__file__))}/scripts/"
+        f"{provision_vm_script}"
+    )
+    exec_script_using_ssh(ez, provision_vm_script_path, compute_name, "")
+    ez.active_remote_compute = compute_name 
+    ez.active_remote_compute_type = "vm"
 
 @click.command()
 def delete():
@@ -150,7 +169,7 @@ def ssh(ez, compute_name):
     )
     ez.active_remote_compute = compute_name
 
-    print(f"CONNECTING to {ssh_remote_host}")
+    print(f"[green]CONNECTING[/green] to {ssh_remote_host}")
     system((
         f"ssh -i {ez.private_key_path} "
         f" -o StrictHostKeyChecking=no "
