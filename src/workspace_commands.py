@@ -1,9 +1,12 @@
 # Workspace commands
 
-from os import path, system
 import click
+
 from ez import CONFIGURATION_FILENAME
-from azutil import login
+from os import path, system
+from rich import print
+from rich.console import Console 
+from rich.text import Text 
 
 @click.command()
 @click.option("--workspace-name", "-n", default="ez-workspace", 
@@ -51,10 +54,31 @@ def create(ez, workspace_name, subscription, region,
 
 @click.command()
 def delete():
-  """Delete a workspace"""
-  pass
+    """Delete a workspace"""
+    pass
 
 @click.command()
 def ls():
-  """List workspaces"""
-  pass
+    """List workspaces"""
+    pass
+
+import subprocess
+
+def get_subscription_name(subscription):
+    cmd = ["az", "account", "show", "-s", subscription, "-o", "tsv"]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)
+    fields = result.stdout.decode("utf-8").split("\t")
+    return fields[5]
+
+@click.command()
+@click.pass_obj
+def info(ez):
+    """Show information about the ez workspace"""
+    subscription_name = get_subscription_name(ez.subscription)
+    subscription_info = f"{subscription_name} ({ez.subscription})"
+
+    print(f"Current workspace:\n")
+    print(f"[green]Name[/green]:           {ez.workspace_name}")
+    print(f"[green]Subscription[/green]:   {subscription_info}")
+    print(f"[green]Resource Group[/green]: {ez.resource_group}")
+    print(f"[green]Azure Region[/green]:   {ez.region}")

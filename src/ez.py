@@ -207,6 +207,7 @@ def workspace():
 workspace.add_command(workspace_commands.create)
 workspace.add_command(workspace_commands.delete)
 workspace.add_command(workspace_commands.ls)
+workspace.add_command(workspace_commands.info)
 
 # compute sub-commands
 
