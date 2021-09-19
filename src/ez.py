@@ -173,11 +173,12 @@ def check_dependencies(force = False) -> bool:
         "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
         ), force):
         return False
-    if not check_installed("jupyter-repo2docker", 
-        ("The Python package repo2docker must be installed to generate the "
-         "container images used by ez.\n"
-        "pip install jupyter-repo2docker"), force):
-        return False
+    # TODO: remove permanently when we have stripped this dependency
+    # if not check_installed("jupyter-repo2docker", 
+    #     ("The Python package repo2docker must be installed to generate the "
+    #      "container images used by ez.\n"
+    #     "pip install jupyter-repo2docker"), force):
+    #     return False
     return True
 
 @click.group()
