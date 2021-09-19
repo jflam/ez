@@ -156,7 +156,7 @@ def stop(ez, compute_name):
     # TODO: get compute_type too and fail for now on this
     print(f"STOPPING compute node {compute_name}")
     exec_command(ez, (
-        f"az vm stop --name {compute_name} "
+        f"az vm deallocate --name {compute_name} "
         f"--resource-group {ez.resource_group}"))
     exit(0)
 
