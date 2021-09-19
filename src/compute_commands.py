@@ -50,6 +50,9 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
         if is_gpu(compute_size):
             provision_vm_script = "provision-gpu"
 
+        # TODO: parameterize this in .ez.conf
+        os_disk_size = 256
+
         print((
             f"CREATING virtual machine {compute_name} size {compute_size} "
             f"in resource group {ez.resource_group}..."))
@@ -61,6 +64,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
             f"             --ssh-key-values {ez.private_key_path}.pub"
             f"             --admin-username {ez.user_name}"
             f"             --public-ip-address-dns-name {compute_name}"
+            f"             --os-disk-size-gb {os_disk_size}"
         )   
         exec_command(ez, az_vm_create)
         # TODO: analyze output for correct flags
