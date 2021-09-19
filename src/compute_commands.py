@@ -64,12 +64,13 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
             f"             --ssh-key-values {ez.private_key_path}.pub"
             f"             --admin-username {ez.user_name}"
             f"             --public-ip-address-dns-name {compute_name}"
+            f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
         exec_command(ez, az_vm_create)
         # TODO: analyze output for correct flags
 
-        enable_jit_access_on_vm(ez, compute_name)
+        # enable_jit_access_on_vm(ez, compute_name)
 
         print(f"INSTALLING system software on virtual machine")
         provision_vm_script_path = (
