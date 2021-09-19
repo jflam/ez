@@ -70,7 +70,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
         exec_command(ez, az_vm_create)
         # TODO: analyze output for correct flags
 
-        # enable_jit_access_on_vm(ez, compute_name)
+        enable_jit_access_on_vm(ez, compute_name)
 
         print(f"INSTALLING system software on virtual machine")
         provision_vm_script_path = (
@@ -117,7 +117,7 @@ def delete(ez, compute_name):
     compute_name = ez.get_active_compute_name(compute_name)
     print(f"DELETING compute node {compute_name}")
     exec_command(ez, (
-        f"az vm delete --name {compute_name} "
+        f"az vm delete --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"))
     exit(0)
 
@@ -163,7 +163,7 @@ def stop(ez, compute_name):
     # TODO: get compute_type too and fail for now on this
     print(f"STOPPING compute node {compute_name}")
     exec_command(ez, (
-        f"az vm deallocate --name {compute_name} "
+        f"az vm deallocate --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"))
     exit(0)
 
