@@ -10,58 +10,66 @@ set -o nounset   # fail on uninitialized variable references
 set -o errexit   # exit on error on commands -- probably should do this only in debug mode
 set -o pipefail  # exit status of last command that threw non-zero exit code is returned
 
-# Install build pre-requisites
+## Upgrade existing installation to latest
 sudo apt update
 sudo apt upgrade -y
+
+## Install build pre-requisites
+sudo apt update
 sudo apt install build-essential -y
 
-# Install Docker
-sudo apt-get install \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg-agent \
-    software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+## Install Docker 
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+curl https://get.docker.com | sh \
+  && sudo systemctl --now enable docker
 
-# Install CUDA toolkit 
+## Install nvidia drivers
+# https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html
+
+# Install linux headers for this distribution
+sudo apt-get install linux-headers-$(uname -r)
+
+# Ensure packages from CUDA repo have precedence over Canonical repo
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
+wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-$distribution.pin
+sudo mv cuda-$distribution.pin /etc/apt/preferences.d/cuda-repository-pin-600
+
+# Install CUDA GPG key
+sudo apt-key adv --fetch-keys \
+  https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/7fa2af80.pub
+
+# Add reference to CUDA network repository
+echo "deb http://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64 /" \
+  | sudo tee /etc/apt/sources.list.d/cuda.list
+
+# Install drivers
+sudo apt-get update
+sudo apt-get -y install cuda-drivers
+
+# Update environment variables
+# https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#post-installation-actions
+export PATH=/usr/local/cuda-11.4/bin${PATH:+:${PATH}}
+export LD_LIBRARY_PATH=/usr/local/cuda-11.4/lib64\
+  ${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+
+## Install nvidia-docker2 
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+# Update repository links
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
    && curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - \
    && curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
 
 curl -s -L https://nvidia.github.io/nvidia-container-runtime/experimental/$distribution/nvidia-container-runtime.list | sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
-sudo apt update
+
+sudo apt-get update
 sudo apt install -y nvidia-docker2
 sudo systemctl restart docker
 
-# Enable docker to run under a non superuser account
-sudo gpasswd -a $USER docker
-newgrp docker
+## Setup Docker to run without needing sudo
+# https://docs.docker.com/engine/install/linux-postinstall/
+sudo usermod -aG docker $USER
 
-# Install miniconda for all users (because this will become an image later)
-mkdir ~/tmp; cd ~/tmp
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-sudo bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
-
-# enable non-su access to miniconda
-sudo groupadd miniconda-users
-sudo chgrp -R miniconda-users /opt/miniconda
-sudo chmod 770 -R /opt/miniconda 
-sudo gpasswd -a $USER miniconda-users
-newgrp miniconda-users
-
-# Initialize conda
-eval "$(/opt/miniconda/bin/conda shell.bash hook)"
-conda init 
-
-# Install jupyter-repo2docker
-pip install jupyter-repo2docker
-
-# Not sure why this is needed but missing dependency in jupyter-repo2docker somehow?
-pip install ruamel.yaml
+# This is required to run docker successfully post-install, I think
+# Run this to verify: sudo docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
+sudo reboot
