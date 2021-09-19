@@ -92,7 +92,7 @@ def is_gpu(vm_size):
         return False     
 
     azure_gpu_sizes = [
-        "Standard_NV6"
+        "Standard_NV6",
         "Standard_NV12",
         "Standard_NV24",
         "Standard_NV6_Promo",
@@ -127,7 +127,9 @@ def is_gpu(vm_size):
         "Standard_NV32as_v4"
     ]
     vm_size = vm_size.strip()
-    return vm_size in azure_gpu_sizes
+    result = vm_size in azure_gpu_sizes
+    print(f"{vm_size} is a GPU? {result}")
+    return result
 
 def is_vm_running(ez, vm_name) -> bool:
     is_running = (
