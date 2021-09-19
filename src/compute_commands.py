@@ -110,9 +110,16 @@ def install_system(ez, compute_name, compute_size):
     ez.active_remote_compute_type = "vm"
 
 @click.command()
-def delete():
+@click.option("--compute-name", "-n", help="Name of VM to delete")
+@click.pass_obj
+def delete(ez, compute_name):
     """Delete a compute node"""
-    pass
+    compute_name = ez.get_active_compute_name(compute_name)
+    print(f"DELETING compute node {compute_name}")
+    exec_command(ez, (
+        f"az vm delete --name {compute_name} "
+        f"--resource-group {ez.resource_group}"))
+    exit(0)
 
 @click.command()
 @click.pass_obj
@@ -148,7 +155,7 @@ def start(ez, compute_name):
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of VM to start")
+@click.option("--compute-name", "-n", help="Name of VM to stop")
 @click.pass_obj
 def stop(ez, compute_name):
     """Stop a virtual machine"""
