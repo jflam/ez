@@ -151,6 +151,9 @@ def start(ez, compute_name):
     # TODO: do nothing if compute-name is not a VM
     compute_name = ez.get_active_compute_name(compute_name)
     jit_activate_vm(ez, compute_name)
+    exec_command(ez, (
+        f"az vm start --name {compute_name} "
+        f"--resource-group {ez.resource_group}"))
     ez.active_remote_compute = compute_name
     exit(0)
 
