@@ -190,3 +190,63 @@ def up(ez, compute_name, env_name):
                                                      True)
     launch_vscode(ez, path_to_vscode_project)
     exit(0)
+
+@click.command()
+@click.option("--git-uri", "-g", required=True, 
+              help="URI of git repo to load in the environment")
+@click.option("--compute-name", "-c", required=True,
+              help="Compute name to migrate the environment to")
+@click.option("--env-name", "-n", required=True,
+              help="Environment name to start")
+@click.pass_obj
+def go(ez, git_uri, compute_name, env_name):
+    """New experimental version of the run command that will remove the need
+    to have repo2docker installed."""
+
+    # Clone the repository locally to a subdirectory of the directory where
+    # the command is run from.
+    local_dir_name = git_uri.rsplit('/', 1)[1]
+    local_path = f"{getcwd()}/{local_dir_name}"
+    git_cmd = f"git clone {git_uri} {local_path}"
+    print(f"CLONING {git_uri} into {local_path}")
+    print(git_cmd)
+
+    # Read the ez.json configuration file at the root of the repository. This
+    # needs to be read per project and contains some additional information:
+    # - requires_gpu: True/False 
+    # - base_container_image: name of the base container image
+    
+    # Determine if the target compute is local or remote. If local, we will
+    # need to clone the GH repo locally, if remote, we will need to use SSH
+    # tunneling to clone the repo onto the VM in a pre-configured location.
+
+    # If it is a remote launch, we will need to generate the information
+    # needed for the local devcontainer.json file, as well as for the
+    # settings.json file that contains the .vscode/settings.json file that
+    # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
+
+
+    # Check to see if the remote compute has the GPU capability if needed and
+    # fail if it doesn't.
+
+    # Start the remote compute if necessary. Wait for it to complete starting
+
+    # Generate the Dockerfile to be used by the project. The Dockerfile is
+    # generated at launch time, and will have comments in it that will say
+    # that it is machine-generated. Furthermore, the Dockerfile should be
+    # excluded from the GH repo via .gitignore so that it doesn't pollute the
+    # git history of the project. The Dockerfile will be generated and placed
+    # in the .devcontainer directory locally or scp'd to the remote machine in
+    # the well-known place where the cloned repo is stored:
+    # /home/<ezuser>/ez/<GH repo name>
+
+    # To generate the Dockerfile, information will be needed from the repo.
+    # This first version of the command will just clone the repo into the
+    # surrogate project directory. A future optimization will avoid the need
+    # to clone the project locally as well.
+
+    # Launch the project by launching VS Code using "code .". In the future
+    # this command will be replaced with "devcontainer open ." but because of
+    # the remote bug in devcontainer, we will avoid doing this for now and
+    # manually reopen the VS Code project.
+    pass
