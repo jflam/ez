@@ -1,9 +1,10 @@
 # env commands
 
-from os import getcwd, path
-import click, random, uuid
+import os, click, random, subprocess, uuid
+
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
+from os import getcwd, path
 
 def launch_user_interface(ez, user_interface, path_to_vscode_project, 
                           jupyter_port, token):
@@ -191,6 +192,9 @@ def up(ez, compute_name, env_name):
     launch_vscode(ez, path_to_vscode_project)
     exit(0)
 
+def exec_subprocess(cmd: str, dir = None) -> None:
+    subprocess.run(cmd.split(' '), cwd=dir)
+
 @click.command()
 @click.option("--git-uri", "-g", required=True, 
               help="URI of git repo to load in the environment")
@@ -203,33 +207,104 @@ def go(ez, git_uri, compute_name, env_name):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
 
+    # env_name will be used for local name of repository and is the path
+    # on a remote machine as well
+
+    # If the local path exists already, then we don't clone unless the
+    # --force-clone switch is specified.
+
     # Clone the repository locally to a subdirectory of the directory where
     # the command is run from.
-    local_dir_name = git_uri.rsplit('/', 1)[1]
-    local_path = f"{getcwd()}/{local_dir_name}"
-    git_cmd = f"git clone {git_uri} {local_path}"
-    print(f"CLONING {git_uri} into {local_path}")
-    print(git_cmd)
+    local_env_path = f"{getcwd()}/{env_name}"
+
+    if path.exists(local_env_path):
+        print(f"UPDATING {git_uri} in {local_env_path}")
+        git_cmd = f"cd {local_env_path} && git pull"
+        # exec_command(ez, git_cmd)
+        exec_subprocess("git pull", local_env_path)
+    else:
+        git_cmd = f"git clone {git_uri} {local_env_path}"
+        print(f"CLONING {git_uri} into {local_env_path}")
+        # exec_command(ez, git_cmd)
+        exec_subprocess(git_cmd)
 
     # Read the ez.json configuration file at the root of the repository. This
     # needs to be read per project and contains some additional information:
     # - requires_gpu: True/False 
     # - base_container_image: name of the base container image
+
+    # HARD CODED for now
+    requires_gpu = True
+    base_container_image = "nvcr.io/nvidia/pytorch:21.08-py3"
     
     # Determine if the target compute is local or remote. If local, we will
     # need to clone the GH repo locally, if remote, we will need to use SSH
     # tunneling to clone the repo onto the VM in a pre-configured location.
-
-    # If it is a remote launch, we will need to generate the information
-    # needed for the local devcontainer.json file, as well as for the
-    # settings.json file that contains the .vscode/settings.json file that
-    # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
-
+    remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
+    remote_clone_cmd = f"git clone {git_uri} {remote_env_path}"
+    ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}."
+                      f"cloudapp.azure.com")
+    remote_ssh_cmd = (
+        f"ssh -o StrictHostKeyChecking=no "
+        f"-i {ez.private_key_path} {ssh_connection} {remote_clone_cmd}"
+    )
+    # exec_command(ez, remote_ssh_cmd)
+    exec_subprocess(remote_ssh_cmd)
 
     # Check to see if the remote compute has the GPU capability if needed and
     # fail if it doesn't.
 
     # Start the remote compute if necessary. Wait for it to complete starting
+
+    # If it is a remote launch, we will need to generate the information
+    # needed for the local devcontainer.json file, as well as for the
+    # settings.json file that contains the .vscode/settings.json file that
+    # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
+    settings_json = f"""
+{{
+    "docker.host": "ssh://{ssh_connection}",
+}}
+"""
+    print(f"GENERATING .vscode/settings.json:{settings_json}")
+    vscode_dir = f"{local_env_path}/.vscode"
+    settings_json_path = f"{vscode_dir}/settings.json"
+    if not os.path.exists(vscode_dir):
+        os.mkdir(vscode_dir)
+    
+    # Always overwrite these configuration files
+    with open(settings_json_path, "wt+", encoding="utf-8") as f:
+        f.write(settings_json)
+
+    # Generate the devcontainer.json file. Much of this will eventually be
+    # parameterized
+    if compute_name == ".":
+        mount_path = local_env_path
+    else:
+        mount_path = remote_env_path
+
+    devcontainer_json = f"""
+{{
+    "containerUser": "root",
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source={mount_path},target=/workspace,type=bind,consistency=cached",
+    "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+    ],
+    "runArgs": [
+        "--gpus=all",
+        "--ipc=host",
+    ],
+    "dockerFile": "./Dockerfile",
+}}
+"""
+    print(f"GENERATING .devcontainer/devcontainer.json:{devcontainer_json}")
+    devcontainer_dir = f"{local_env_path}/.devcontainer"
+    devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
+    if not os.path.exists(devcontainer_dir):
+        os.mkdir(devcontainer_dir)
+    with open(devcontainer_json_path, "wt+", encoding="utf-8") as f:
+        f.write(devcontainer_json)
 
     # Generate the Dockerfile to be used by the project. The Dockerfile is
     # generated at launch time, and will have comments in it that will say
@@ -245,8 +320,20 @@ def go(ez, git_uri, compute_name, env_name):
     # surrogate project directory. A future optimization will avoid the need
     # to clone the project locally as well.
 
+    dockerfile = f"""
+FROM {base_container_image}
+
+COPY requirements.txt /tmp/requirements.txt
+WORKDIR /tmp
+RUN pip install -v -r requirements.txt
+"""
+    print(f"GENERATING .devcontainer/Dockerfile:{dockerfile}")
+    dockerfile_path = f"{devcontainer_dir}/Dockerfile"
+    with open(dockerfile_path, "wt+", encoding="utf-8") as f:
+        f.write(dockerfile)
+
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
     # the remote bug in devcontainer, we will avoid doing this for now and
     # manually reopen the VS Code project.
-    pass
+    launch_vscode(ez, local_env_path)
