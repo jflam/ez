@@ -1,17 +1,19 @@
 import click
 import configparser
+import constants as C
+import pandas as pd
+import subprocess
 
-from os import path, system
-from rich import print
-
-CONFIGURATION_FILENAME = "~/.ez.conf"
-
-# Import sub-commands
-import workspace_commands
 import compute_commands
 import env_commands
+import workspace_commands
 
 from azutil import exec_command
+from io import StringIO
+from os import path, system
+from rich import print
+from rich.console import Console 
+from rich.prompt import IntPrompt
 
 # Ez object defines application-wide state 
 
@@ -55,7 +57,7 @@ class Ez(object):
         """Load configuration settings from the ~/.easy.conf file"""
         config = configparser.ConfigParser()
 
-        easy_conf_file = path.expanduser(CONFIGURATION_FILENAME)
+        easy_conf_file = path.expanduser(C.CONFIGURATION_FILENAME)
         if path.exists(easy_conf_file):
             config.read(easy_conf_file)
             self.workspace_name = config["Workspace"]["workspace_name"]
@@ -96,7 +98,7 @@ class Ez(object):
         config["Remotes"]["active_remote_compute_type"] = (
             self.active_remote_compute_type)
         config["Remotes"]["active_remote_env"] = self.active_remote_env
-        with open(path.expanduser(CONFIGURATION_FILENAME), 'w') as file:
+        with open(path.expanduser(C.CONFIGURATION_FILENAME), 'w') as file:
             config.write(file)
     
     def get_active_compute_name(self, compute_name) -> str:
@@ -139,10 +141,6 @@ class Ez(object):
     def debug_print(self, str):
         if self.debug:
             print(str)
-
-# ez top-level command
-from rich.console import Console 
-from rich.text import Text 
 
 def check_installed(command: str, 
                     install_help: str = None,
@@ -190,7 +188,7 @@ def check_dependencies(force = False) -> bool:
 @click.pass_context
 def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
-    environments"""
+    environments. To get started run ez init!"""
     # TODO: restore this once jit support is back
     # ctx.obj = Ez(debug, trace, insiders, disable_jit)
     ctx.obj = Ez(debug, trace, insiders, True)
@@ -200,11 +198,62 @@ def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
         ctx.obj.save()
     ctx.call_on_close(_save_context)
 
+
+@click.command()
+@click.pass_obj
+def init(ez):
+    """Start here to initialize ez"""
+
+    print("Select which subscription you would like to use:\n")
+
+    # Read subscriptions into a pandas dataframe
+    cmd = "az account list -o tsv"
+    result = subprocess.run(cmd.split(' '), capture_output=True)
+    stdout = result.stdout.decode("utf-8")
+    stream = StringIO(stdout)
+    df = pd.read_csv(stream, sep="\t", header=None)
+    df = df.sort_values(by=[5])
+
+    # Print out a list of subscriptions for the user to select from
+    current_subscription = -1
+    for i, name in enumerate(df.iloc[:,5]):
+        if df.iloc[i][3]:
+            print(f"{i} {name} [green]<== CURRENT[/green]")
+            current_subscription = i
+        else:
+            print(f"{i} {name}")
+
+    # Ask the user to select the subscription
+    while True:
+        choice = IntPrompt.ask("Enter number of subscription that you want to use", 
+                            default=current_subscription)
+        if choice >= 0 and choice < df.shape[0]:
+            break
+
+    subscription_name = df.iloc[choice][5]
+    subscription_id = df.iloc[choice][2]
+
+    print(f"You selected {df.iloc[choice][5]}, subscription id: {df.iloc[choice][2]}")
+    cmd = f"az account set --subscription {subscription_id}"
+    subprocess.run(cmd.split(' '))
+
+    print("Done!")
+
+ez.add_command(init)
+
 # workspace sub-commands
 
 @ez.group()
 def workspace():
     """Manage workspaces"""
+    # Tell the user what they need to get started
+    # They need to have the Azure CLI installed
+    # They need to have Docker installed
+    # 1. Login to azure (or check to see if they are logged in)
+    # 2. List subscriptions and ask which one you'd like to set as default
+    # Ideally it will print out a list of the Azure subs that you have
+    # and let you pick from it. Do this experiment with rich 
+
     pass
 
 workspace.add_command(workspace_commands.create)

@@ -1,8 +1,8 @@
 # Workspace commands
 
 import click
+import constants as C
 
-from ez import CONFIGURATION_FILENAME
 from os import path, system
 from rich import print
 
@@ -23,9 +23,9 @@ def create(ez, workspace_name, subscription, region,
     """Create a workspace"""
 
     # A workspace is defined by ~/.easy.conf file
-    if path.exists(path.expanduser(CONFIGURATION_FILENAME)):
+    if path.exists(path.expanduser(C.CONFIGURATION_FILENAME)):
         print((
-               f"{CONFIGURATION_FILENAME} exists already. ez only "
+               f"{C.CONFIGURATION_FILENAME} exists already. ez only "
                f"supports a single registration at a time today."))
         exit(1)
 
