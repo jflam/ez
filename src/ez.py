@@ -1,3 +1,4 @@
+import enum
 import click
 import configparser
 import constants as C
@@ -297,11 +298,51 @@ def init(ez):
             print(f"Azure resource group creation failed "
                   f"with return code {result.returncode}")
             exit(result.returncode)
+
+        # Ask to create an Azure Container Registry
+        choice = Prompt.ask("Create an Azure Container Registry? (blank "
+                            "name will not create one)", default="")
+        if choice != "":
+            registry_name = choice
+            cmd = (f"az acr create --resource-group {workspace_resource_group}"
+                   f"--name {registry_name} --sku Basic")
+            result = subprocess.run(cmd.split(' '))
+            if result.returncode != 0:
+                print(f"Azure Container Registry creation failed "
+                      f"with return code {result.returncode}")
+                exit(result.returncode)
+
     else:
         workspace_resource_group = df.iloc[choice][3]
         workspace_region = df.iloc[choice][1]
         print(f"Selected {workspace_resource_group}, "
               f"region {workspace_region}")
+
+        # List Azure Container Registries in this resource group
+        cmd = (f"az acr list --resource-group {workspace_resource_group} "
+               "-o tsv")
+        df = exec_command_return_dataframe(cmd)
+        count = df.shape[0]
+
+        if count == 0:
+            registry_name = ""
+            registry_region = ""
+        elif count == 1:
+            registry_name = df.iloc[0][10]
+            registry_region = df.iloc[0][8]
+        else:
+            for i, name in enumerate(df.iloc[:,9]):
+                print(f"{i} {name}")
+            
+            while True:
+                choice = IntPrompt.ask("Enter registry # to use", default=-1)
+                if choice >= 0 and choice < df.shape[0]:
+                    break
+            
+            registry_name = df.iloc[choice][10]
+            registry_region = df.iloc[choice][8]
+
+        print(f"Selected registry {registry_name} in {registry_region}")
 
     # Ask for username 
     print("\nStep 4/5: Select user account name to use for compute resources")
@@ -357,6 +398,7 @@ def init(ez):
     ez_config = {
         "workspace-name": workspace_name,
         "resource-group": workspace_resource_group,
+        "registry-name": registry_name,
         "subscription": subscription_id,
         "region": workspace_region,
         "private_key_path": keyfile_path,
@@ -370,14 +412,15 @@ def init(ez):
 
     ez_config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
     if os.path.isfile(ez_config_path):
-        choice = Prompt.ask(f"{ez_config_path} exists. Delete?", default="n")
+        choice = Prompt.ask(f"{ez_config_path} exists. Overwrite?", 
+                            default="n")
         if choice == "y":
             os.remove(ez_config_path)
         else:
             exit(0)
 
     with open(ez_config_path, "w") as f:
-        json.dump(ez_config, f)
+        json.dump(ez_config, f, indent=4)
 
     print(f"""
 ez is now configured, configuration file written to {ez_config_path}.
@@ -386,7 +429,8 @@ Try running creating a compute and running a GitHub
 repo using it. Here's an example:
 
 ez compute create -n my-ez-gpu-vm -s Standard_NC6_Promo
-ez env run -g https://github.com/jflam/pytorch-tutorials -c my-ez-gpu-vm -n pytorch-tutorials
+ez env run -g https://github.com/jflam/pytorch-tutorials \\
+           -c my-ez-gpu-vm -n pytorch-tutorials
 
 For support, please create a GitHub issue at https://github.com/jflam/ez
 """)
