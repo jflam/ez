@@ -1,7 +1,10 @@
 import click
 import configparser
 import constants as C
+import json
+import os
 import pandas as pd
+import pathlib
 import subprocess
 
 import compute_commands
@@ -13,7 +16,7 @@ from io import StringIO
 from os import path, system
 from rich import print
 from rich.console import Console 
-from rich.prompt import IntPrompt
+from rich.prompt import IntPrompt, Prompt
 
 # Ez object defines application-wide state 
 
@@ -198,20 +201,22 @@ def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
         ctx.obj.save()
     ctx.call_on_close(_save_context)
 
+def exec_command_return_dataframe(cmd):
+    result = subprocess.run(cmd.split(' '), capture_output=True)
+    stdout = result.stdout.decode("utf-8")
+    stream = StringIO(stdout)
+    return pd.read_csv(stream, sep="\t", header=None)
 
 @click.command()
 @click.pass_obj
 def init(ez):
     """Start here to initialize ez"""
 
-    print("Select which subscription you would like to use:\n")
+    print("Step 1/5: Select Azure subscription to use\n")
 
     # Read subscriptions into a pandas dataframe
     cmd = "az account list -o tsv"
-    result = subprocess.run(cmd.split(' '), capture_output=True)
-    stdout = result.stdout.decode("utf-8")
-    stream = StringIO(stdout)
-    df = pd.read_csv(stream, sep="\t", header=None)
+    df = exec_command_return_dataframe(cmd)
     df = df.sort_values(by=[5])
 
     # Print out a list of subscriptions for the user to select from
@@ -225,19 +230,166 @@ def init(ez):
 
     # Ask the user to select the subscription
     while True:
-        choice = IntPrompt.ask("Enter number of subscription that you want to use", 
-                            default=current_subscription)
+        choice = IntPrompt.ask("Enter subscription # to use", 
+                               default=current_subscription)
         if choice >= 0 and choice < df.shape[0]:
             break
 
+    # Set default subscription in the Azure CLI 
     subscription_name = df.iloc[choice][5]
     subscription_id = df.iloc[choice][2]
+    print(f"Selected {subscription_name}, subscription id: {subscription_id}")
 
-    print(f"You selected {df.iloc[choice][5]}, subscription id: {df.iloc[choice][2]}")
     cmd = f"az account set --subscription {subscription_id}"
     subprocess.run(cmd.split(' '))
 
-    print("Done!")
+    # Select or create a new workspace
+    # TODO: today this only creates a new resource group, make it select 
+    # in the future
+    print("\nStep 2/5: Create a new workspace\n")
+
+    # Ask for name
+    workspace_name = Prompt.ask("Workspace name", default="ezws")
+
+    # Show existing resource groups scoped to selected subscription
+    print("\nStep 3/5: Select or create Azure resource group to use\n")
+
+    cmd = "az group list -o tsv"
+    df = exec_command_return_dataframe(cmd)
+    df = df.sort_values(by=[3])
+    for i, name in enumerate(df.iloc[:,3]):
+        print(f"{i} {name}")
+    
+    while True:
+        choice = IntPrompt.ask("Enter resource group # to "
+                               "use (-1 to create a new resource group)", 
+                               default=-1)
+        if choice >= -1 and choice < df.shape[0]:
+            break
+
+    if choice == -1:
+        # Ask for resource group
+        workspace_resource_group = Prompt.ask("Azure resource group name", 
+                                          default=f"{workspace_name}-rg")
+
+        # Ask user to select region
+        cmd = "az account list-locations -o tsv"
+        df = exec_command_return_dataframe(cmd)
+
+        for i, name in enumerate(df.iloc[:,0]):
+            print(f"{i} {name}")
+
+        while True:
+            choice = IntPrompt.ask("Enter region # to use", default=-1)
+            if choice >= 0 and choice < df.shape[0]:
+                break
+
+        workspace_region = df.iloc[choice][1]
+
+        print(f"Creating {workspace_resource_group} "
+              f"in region {workspace_region}")
+
+        # Create the resource group
+        cmd = (f"az group create --location {workspace_region}" 
+            f"--name {workspace_resource_group}")
+        result = subprocess.run(cmd.split(' '))
+        if result.returncode != 0:
+            print(f"Azure resource group creation failed "
+                  f"with return code {result.returncode}")
+            exit(result.returncode)
+    else:
+        workspace_resource_group = df.iloc[choice][3]
+        workspace_region = df.iloc[choice][1]
+        print(f"Selected {workspace_resource_group}, "
+              f"region {workspace_region}")
+
+    # Ask for username 
+    print("\nStep 4/5: Select user account name to use for compute resources")
+    user_name = Prompt.ask("User name for VMs", default="ezuser")
+
+    # Ask user to select an existing private key or create a new public/key 
+    ssh_path = os.path.expanduser(C.SSH_DIR)
+    files = [f for f in os.listdir(ssh_path) 
+             if os.path.isfile(os.path.join(ssh_path, f))]
+    keyfiles = []
+    for file in files:
+        extension = pathlib.Path(file).suffix
+        if extension == "":
+            if f"{file}.pub" in files:
+                keyfiles.append(file)
+    
+    print("\nStep 5/5: Select or create SSH keys to use\n") 
+    for i, keyfile in enumerate(keyfiles):
+        print(f"{i} {keyfile}")
+    
+    # Ask the user to select the SSH key to use
+    while True:
+        choice = IntPrompt.ask("Enter # of key file to "
+                               "use (-1 to create a new key)", 
+                               default=-1)
+        if choice >= -1 and choice < len(keyfiles):
+            break
+    
+    # Generate a new keyfile
+    if choice == -1:
+        while True:
+            choice = Prompt.ask("SSH keyfile name", default="id_rsa_keyfile")
+            if choice in keyfiles:
+                print(f"{choice} keyfile already exists")
+            else:
+                break
+
+        keypath = os.path.expanduser(f"~/.ssh/{choice}")
+        cmd = f"ssh-keygen -m PEM -t rsa -b 4096 -f {keypath} -q -N"
+        cmdline = cmd.split(' ')
+        cmdline.append('')
+        result = subprocess.run(cmdline)
+        keyfile = choice
+        if result.returncode != 0:
+            exit(result.returncode)
+    else:
+        keyfile = keyfiles[choice]
+    
+    keyfile_path = os.path.expanduser(f"~/.ssh/{keyfile}")
+    print(f"SSH keyfile: {keyfile}/{keyfile}.pub")
+
+    # Write the configuration file
+    ez_config = {
+        "workspace-name": workspace_name,
+        "resource-group": workspace_resource_group,
+        "subscription": subscription_id,
+        "region": workspace_region,
+        "private_key_path": keyfile_path,
+        "user_name": user_name,
+
+        # Define fields
+        "active_compute": "",
+        "active_compute_type": "",
+        "active_env": ""
+    }
+
+    ez_config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
+    if os.path.isfile(ez_config_path):
+        choice = Prompt.ask(f"{ez_config_path} exists. Delete?", default="n")
+        if choice == "y":
+            os.remove(ez_config_path)
+        else:
+            exit(0)
+
+    with open(ez_config_path, "w") as f:
+        json.dump(ez_config, f)
+
+    print(f"""
+ez is now configured, configuration file written to {ez_config_path}.
+
+Try running creating a compute and running a GitHub
+repo using it. Here's an example:
+
+ez compute create -n my-ez-gpu-vm -s Standard_NC6_Promo
+ez env run -g https://github.com/jflam/pytorch-tutorials -c my-ez-gpu-vm -n pytorch-tutorials
+
+For support, please create a GitHub issue at https://github.com/jflam/ez
+""")
 
 ez.add_command(init)
 
