@@ -7,6 +7,7 @@ setup(
                 'workspace_commands', 
                 'env_commands', 
                 'compute_commands', 
+                'constants',
                 'azutil'],
     install_requires=['Click', 'rich'],
     entry_points='''
