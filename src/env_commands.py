@@ -198,14 +198,26 @@ def exec_subprocess(cmd: str, dir = None) -> None:
 @click.command()
 @click.option("--git-uri", "-g", required=True, 
               help="URI of git repo to load in the environment")
-@click.option("--compute-name", "-c", required=True,
+@click.option("--compute-name", "-c", required=False,
               help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=True,
+@click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
 def go(ez, git_uri, compute_name, env_name):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
+
+    if compute_name is None:
+        if ez.active_remote_compute == "":
+            print("No active remote compute, specify the compute you want "
+                "to use using the --compute-name paramter.")
+        else:
+            compute_name = ez.active_remote_compute
+            print(f"Using {compute_name} to run {git_uri}")
+
+    if env_name is None:
+        env_name = git_uri.split("/")[-1]
+        print(f"Using {env_name} (repo name) as the env name")
 
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
@@ -219,13 +231,10 @@ def go(ez, git_uri, compute_name, env_name):
 
     if path.exists(local_env_path):
         print(f"UPDATING {git_uri} in {local_env_path}")
-        git_cmd = f"cd {local_env_path} && git pull"
-        # exec_command(ez, git_cmd)
         exec_subprocess("git pull", local_env_path)
     else:
         git_cmd = f"git clone {git_uri} {local_env_path}"
         print(f"CLONING {git_uri} into {local_env_path}")
-        # exec_command(ez, git_cmd)
         exec_subprocess(git_cmd)
 
     # Read the ez.json configuration file at the root of the repository. This
@@ -240,15 +249,27 @@ def go(ez, git_uri, compute_name, env_name):
     # Determine if the target compute is local or remote. If local, we will
     # need to clone the GH repo locally, if remote, we will need to use SSH
     # tunneling to clone the repo onto the VM in a pre-configured location.
+
+    # In the remote case, it needs to conditionally clone the git repo onto
+    # the remote VM. If the repo was already cloned on the VM, then we need
+    # to cd into the dir and git pull that repo. Otherwise just do the clone.
     remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
-    remote_clone_cmd = f"git clone {git_uri} {remote_env_path}"
+    remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && cd {remote_env_path} "
+                       f"&& git pull")
+    remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
+                        f"git clone {git_uri} {remote_env_path}")
     ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}."
                       f"cloudapp.azure.com")
     remote_ssh_cmd = (
         f"ssh -o StrictHostKeyChecking=no "
+        f"-i {ez.private_key_path} {ssh_connection} {remote_pull_cmd}"
+    )
+    print(f"Clone/update {git_uri} on {compute_name} at {remote_env_path}")
+    exec_subprocess(remote_ssh_cmd)
+    remote_ssh_cmd = (
+        f"ssh -o StrictHostKeyChecking=no "
         f"-i {ez.private_key_path} {ssh_connection} {remote_clone_cmd}"
     )
-    # exec_command(ez, remote_ssh_cmd)
     exec_subprocess(remote_ssh_cmd)
 
     # Check to see if the remote compute has the GPU capability if needed and
@@ -265,7 +286,7 @@ def go(ez, git_uri, compute_name, env_name):
     "docker.host": "ssh://{ssh_connection}",
 }}
 """
-    print(f"GENERATING .vscode/settings.json:{settings_json}")
+    print(f"GENERATING .vscode/settings.json")
     vscode_dir = f"{local_env_path}/.vscode"
     settings_json_path = f"{vscode_dir}/settings.json"
     if not os.path.exists(vscode_dir):
@@ -298,7 +319,7 @@ def go(ez, git_uri, compute_name, env_name):
     "dockerFile": "./Dockerfile",
 }}
 """
-    print(f"GENERATING .devcontainer/devcontainer.json:{devcontainer_json}")
+    print(f"GENERATING .devcontainer/devcontainer.json")
     devcontainer_dir = f"{local_env_path}/.devcontainer"
     devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
     if not os.path.exists(devcontainer_dir):
@@ -327,7 +348,7 @@ COPY requirements.txt /tmp/requirements.txt
 WORKDIR /tmp
 RUN pip install -v -r requirements.txt
 """
-    print(f"GENERATING .devcontainer/Dockerfile:{dockerfile}")
+    print(f"GENERATING .devcontainer/Dockerfile")
     dockerfile_path = f"{devcontainer_dir}/Dockerfile"
     with open(dockerfile_path, "wt+", encoding="utf-8") as f:
         f.write(dockerfile)
@@ -336,4 +357,7 @@ RUN pip install -v -r requirements.txt
     # this command will be replaced with "devcontainer open ." but because of
     # the remote bug in devcontainer, we will avoid doing this for now and
     # manually reopen the VS Code project.
+    print(f"LAUNCHING VS Code ... you will need to reload in remote container"
+          f"by clicking the Reopen in Container button in the notification "
+          f"box in the bottom right corner.")
     launch_vscode(ez, local_env_path)
