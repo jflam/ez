@@ -1,6 +1,4 @@
-import enum
 import click
-import configparser
 import constants as C
 import json
 import os
@@ -31,6 +29,7 @@ class Ez(object):
     # Workspace
     workspace_name: str
     resource_group: str
+    registry_name: str
     subscription: str
     region: str
     private_key_path: str
@@ -58,53 +57,44 @@ class Ez(object):
         self.load()
 
     def load(self):
-        """Load configuration settings from the ~/.easy.conf file"""
-        config = configparser.ConfigParser()
+        """Load configuration settings from ~/.ez.json"""
+        config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
 
-        easy_conf_file = path.expanduser(C.CONFIGURATION_FILENAME)
-        if path.exists(easy_conf_file):
-            config.read(easy_conf_file)
-            self.workspace_name = config["Workspace"]["workspace_name"]
-            self.resource_group = config["Workspace"]["resource_group"]
-            self.subscription = config["Workspace"]["subscription"]
-            self.region = config["Workspace"]["region"]
-            self.private_key_path = config["Workspace"]["private_key_path"]
-            self.user_name = config["Workspace"]["user_name"]
-            self.active_remote_compute = (
-                config["Remotes"]["active_remote_compute"])
-            self.active_remote_compute_type = (
-                config["Remotes"]["active_remote_compute_type"])
-            self.active_remote_env = config["Remotes"]["active_remote_env"]
+        if path.exists(config_path):
+            with open(config_path, "r") as f:
+                ez_config = json.load(f)
+            self.workspace_name = ez_config["workspace_name"]
+            self.resource_group = ez_config["resource_group"]
+            self.registry_name = ez_config["registry_name"]
+            self.subscription = ez_config["subscription"]
+            self.region = ez_config["region"]
+            self.private_key_path = ez_config["private_key_path"]
+            self.user_name = ez_config["user_name"]
+            self.active_remote_compute = ez_config["active_compute"]
+            self.active_remote_compute_type = ez_config["active_compute_type"]
+            self.active_remote_env = ez_config["active_env"]
         else:
-            self.workspace_name = "ez-workspace"
-            self.resource_group = "ez-workspace-rg"
-            self.subscription = ""
-            self.region = ""
-            self.private_key_path = ""
-            self.user_name = "ezuser"
-            self.active_remote_compute = ""
-            self.active_remote_compute_type = ""
-            self.active_remote_env = ""
+            print(f"ez is not initialized yet. Please run ez init first.")
+            exit(1)
 
     def save(self):
-        """Save configuration settings to the ~/.easy.conf file"""
-        config = configparser.ConfigParser()
-        config["Workspace"] = {}
-        config["Remotes"] = {}
-        config["Workspace"]["workspace_name"] = self.workspace_name
-        config["Workspace"]["resource_group"] = self.resource_group
-        config["Workspace"]["subscription"] = self.subscription
-        config["Workspace"]["region"] = self.region
-        config["Workspace"]["private_key_path"] = self.private_key_path
-        config["Workspace"]["user_name"] = self.user_name
-        config["Remotes"]["active_remote_compute"] = (
-            self.active_remote_compute)
-        config["Remotes"]["active_remote_compute_type"] = (
-            self.active_remote_compute_type)
-        config["Remotes"]["active_remote_env"] = self.active_remote_env
-        with open(path.expanduser(C.CONFIGURATION_FILENAME), 'w') as file:
-            config.write(file)
-    
+        """Save configuration settings to ~/.ez.json"""
+        config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
+        ez_config = {
+            "workspace_name": self.workspace_name,
+            "resource_group": self.resource_group,
+            "registry_name": self.registry_name,
+            "subscription": self.subscription,
+            "region": self.region,
+            "private_key_path": self.private_key_path,
+            "user_name": self.user_name,
+            "active_compute": self.active_remote_compute,
+            "active_compute_type": self.active_remote_compute_type,
+            "active_env": self.active_remote_env 
+        }
+        with open(config_path, "w") as f:
+            json.dump(ez_config, f)
+
     def get_active_compute_name(self, compute_name) -> str:
         """Get the active compute name or exit. Passing None for compute_name
         returns the active remote compute, if it is set."""
@@ -396,9 +386,9 @@ def init(ez):
 
     # Write the configuration file
     ez_config = {
-        "workspace-name": workspace_name,
-        "resource-group": workspace_resource_group,
-        "registry-name": registry_name,
+        "workspace_name": workspace_name,
+        "resource_group": workspace_resource_group,
+        "registry_name": registry_name,
         "subscription": subscription_id,
         "region": workspace_region,
         "private_key_path": keyfile_path,
