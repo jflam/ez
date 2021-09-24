@@ -496,6 +496,7 @@ def install_local_dependencies():
     # install ruamel.yaml (via conda!)
 
 def enable_jit_access_on_vm(ez, vm_name: str):
+    return
     if ez.disable_jit:
         return 
 
