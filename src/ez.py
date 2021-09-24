@@ -418,9 +418,21 @@ ez is now configured, configuration file written to {ez_config_path}.
 Try running creating a compute and running a GitHub
 repo using it. Here's an example:
 
+1. Create a new ez compute VM. This will create a VM and install GPU
+   drivers and Docker.
+
 ez compute create -n my-ez-gpu-vm -s Standard_NC6_Promo
-ez env run -g https://github.com/jflam/pytorch-tutorials \\
-           -c my-ez-gpu-vm -n pytorch-tutorials
+
+2. Run a GitHub repo of notebooks using the VM you just created. This may
+   take a while to generate the Docker container image needed to run that 
+   repo (pytorch containers are >25GB in size!)
+
+ez env run -g https://github.com/jflam/pytorch-tutorials 
+
+3. Shutdown the VM once you're done using it. This will help you save money
+   by not leaving the VM running when you're not using it.
+
+ez compute stop
 
 For support, please create a GitHub issue at https://github.com/jflam/ez
 """)
