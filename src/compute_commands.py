@@ -90,7 +90,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
         exit(1)
 
 # TODO: remove this - this is temporary to unblock
-@click.option("--compute-name", "-n", required=True, 
+@click.option("--compute-name", "-c", required=True, 
               help="Name of compute to create")
 @click.option("--compute-size", "-s", 
               help="Size of Azure VM or '.' for local creation")
@@ -110,7 +110,7 @@ def install_system(ez, compute_name, compute_size):
     ez.active_remote_compute_type = "vm"
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of VM to delete")
+@click.option("--compute-name", "-c", help="Name of VM to delete")
 @click.pass_obj
 def delete(ez, compute_name):
     """Delete a compute node"""
@@ -144,7 +144,7 @@ def ls(ez):
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of VM to start")
+@click.option("--compute-name", "-c", help="Name of VM to start")
 @click.pass_obj
 def start(ez, compute_name):
     """Start a virtual machine"""
@@ -158,7 +158,7 @@ def start(ez, compute_name):
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of VM to stop")
+@click.option("--compute-name", "-c", help="Name of VM to stop")
 @click.pass_obj
 def stop(ez, compute_name):
     """Stop a virtual machine"""
