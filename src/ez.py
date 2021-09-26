@@ -74,8 +74,16 @@ class Ez(object):
             self.active_remote_compute_type = ez_config["active_compute_type"]
             self.active_remote_env = ez_config["active_env"]
         else:
-            print(f"ez is not initialized yet. Please run ez init first.")
-            exit(1)
+            self.workspace_name = None
+            self.resource_group = None 
+            self.registry_name = None
+            self.subscription = None
+            self.region = None
+            self.private_key_path = None
+            self.user_name = None
+            self.active_remote_compute = None
+            self.active_remote_compute_type = None
+            self.active_remote_env = None
 
     def save(self):
         """Save configuration settings to ~/.ez.json"""

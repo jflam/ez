@@ -122,9 +122,33 @@ def cp():
     pass
 
 @click.command()
-def ssh():
+@click.option("--compute-name", "-c", required=False,
+              help="Compute name to migrate the environment to")
+@click.option("--env-name", "-n", required=False,
+              help="Environment name to start")
+@click.pass_obj
+def ssh(ez, compute_name, env_name):
     """SSH to an environment"""
-    pass
+    if not ez.active_remote_compute:
+        if not compute_name:
+            print("--compute-name parameter must be specified because there "
+                  "isn't an active compute environment.")
+            exit(1)
+    else:
+        compute_name = ez.active_remote_compute
+
+    if not ez.active_remote_env:
+        if not env_name:
+            print("--env-name parameter must be specified because there "
+                  "isn't an active environment.")    
+            exit(1)
+    else:
+        env_name = ez.active_remote_env
+
+    cmd = (f"ssh -tt -i {ez.private_key_path} {ez.user_name}@{compute_name}."
+           f"{ez.region}.cloudapp.azure.com docker exec -it {env_name} "
+           f"/bin/bash")
+    subprocess.run(cmd.split(' '))
 
 @click.command()
 def stop():
