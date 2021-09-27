@@ -385,3 +385,9 @@ RUN pip install -v -r requirements.txt
           f"by clicking the Reopen in Container button in the notification "
           f"box in the bottom right corner.")
     launch_vscode(ez, local_env_path)
+
+    # Update ez state
+    ez.active_remote_env = env_name
+    ez.active_remote_compute = compute_name
+    if compute_name != ".":
+        ez.active_remote_compute_type = "vm"
