@@ -145,9 +145,27 @@ def ssh(ez, compute_name, env_name):
     else:
         env_name = ez.active_remote_env
 
+    # Run docker ps on the remote VM to figure out what the container id of 
+    # the running VS Code container is
+    cmd = (f"ssh -i {ez.private_key_path} {ez.user_name}@{compute_name}."
+           f"{ez.region}.cloudapp.azure.com docker ps --format "
+           "{{.Image}},{{.ID}}")
+    result = subprocess.run(cmd.split(' '), capture_output=True)
+    containers = result.stdout.decode("utf-8").split("\n")
+    active_container_name = f"vsc-{env_name}-"
+    vsc_containers = [c for c in containers if c.startswith(active_container_name)]
+    if len(vsc_containers) != 1:
+        print(f"ERROR: >1 container running with same env_name:")
+        print(vsc_containers)
+        exit(1)
+
+    # Open a tunneled SSH connection into the running remote container
+    image_name, container_id = vsc_containers[0].split(",")
     cmd = (f"ssh -tt -i {ez.private_key_path} {ez.user_name}@{compute_name}."
-           f"{ez.region}.cloudapp.azure.com docker exec -it {env_name} "
-           f"/bin/bash")
+           f"{ez.region}.cloudapp.azure.com docker exec -it "
+           f"-w /workspace {container_id} /bin/bash")
+    print(f"SSH connection to container {container_id} running using image "
+          f"{image_name} on {compute_name}.{ez.region}.cloudapp.azure.com")
     subprocess.run(cmd.split(' '))
 
 @click.command()
