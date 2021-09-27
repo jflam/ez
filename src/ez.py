@@ -101,7 +101,7 @@ class Ez(object):
             "active_env": self.active_remote_env 
         }
         with open(config_path, "w") as f:
-            json.dump(ez_config, f)
+            json.dump(ez_config, f, indent=4)
 
     def get_active_compute_name(self, compute_name) -> str:
         """Get the active compute name or exit. Passing None for compute_name
