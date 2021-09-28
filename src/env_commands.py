@@ -112,14 +112,60 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
     exit(0)
 
 @click.command()
-def ls():
+@click.pass_obj
+def ls(ez):
     """List running environments"""
     pass
 
 @click.command()
-def cp():
-    """Copy local files to/from an environment"""
-    pass
+@click.argument("src")
+@click.argument("dest")
+@click.pass_obj
+def cp(ez, src, dest):
+    """
+Copy local files to/from an environment.
+
+ez env cp <source> <dest>
+
+The format of <source> and <dest> are important. Examples:
+
+\b
+foo.txt :.               Copy foo.txt to active environment /workspace dir
+foo.txt :/remote/path    Copy foo.txt to active environment
+:/remote/path/foo.txt .  Copy active environment foo.txt locally
+./*.txt :/remote/path    Copy local .txt files to active environment
+:/remote/path/*.txt ./   Copy active environment .txt files locally
+    """
+    if not ez.active_remote_env:
+        print("No running environment.")
+        exit(1)
+    
+    if not src:
+        print("Missing src argument")
+        exit(1)
+    
+    if not dest:
+        print("Missing dest argument")
+        exit(1)
+    
+    if src.startswith(":") and dest.startswith(":"):
+        print("Both src and dest cannot start with ':' to indicate remote")
+        exit(1)
+    elif src.startswith(":"):
+        cmd = (f"scp -i {ez.private_key_path} {ez.user_name}@"
+               f"{ez.active_remote_compute}.{ez.region}"
+               f".cloudapp.azure.com:/home/{ez.user_name}/src/"
+               f"{ez.active_remote_env}/{src[1:]} {dest}") 
+        subprocess.run(cmd.split(" "))
+    elif dest.startswith(":"):
+        cmd = (f"scp -i {ez.private_key_path} {src} {ez.user_name}@"
+               f"{ez.active_remote_compute}.{ez.region}"
+               f".cloudapp.azure.com:/home/{ez.user_name}/src/"
+               f"{ez.active_remote_env}/{dest[1:]}") 
+        subprocess.run(cmd.split(" "))
+    else:
+        print("One of src or dest must start with ':' to indicate remote")
+        exit(1)
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
