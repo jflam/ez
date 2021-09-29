@@ -1,6 +1,7 @@
 # Compute commands
 
 import click
+import subprocess
 from os import path, system
 
 from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
@@ -29,9 +30,9 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
     
     if compute_size == None:
         print(f"Missing VM size. VM sizes available in {ez.region}:")
-        system((
-            f"az vm list-sizes --subscription {ez.subscription} "
-            f"--location {ez.region} --output table"))
+        cmd = (f"az vm list-sizes --subscription {ez.subscription} "
+               f"--location {ez.region} --output table")
+        subprocess.run(cmd.split(" "))
         exit(1)
 
     # Check to see if the compute-name is taken already
@@ -67,7 +68,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
             f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
-        exec_command(ez, az_vm_create)
+        subprocess.run(az_vm_create.split(" "))
         # TODO: analyze output for correct flags
 
         enable_jit_access_on_vm(ez, compute_name)
@@ -78,6 +79,12 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
             f"{provision_vm_script}"
         )
         exec_script_using_ssh(ez, provision_vm_script_path, compute_name, "")
+
+        # Now enable ssh on the remote machine
+        # 1. generate key using ssh-keygen on remote machine
+        # 2. copy public key back to this machine
+        # 3. copy public key onto clipboard and open github and have instructions on how to define it
+
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
         exit(0)
