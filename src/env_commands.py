@@ -1,6 +1,6 @@
 # env commands
 
-import os, click, random, subprocess, uuid
+import click, json, os, random, subprocess, uuid
 
 from azutil import build_container_image, exec_command, launch_vscode
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
@@ -297,6 +297,8 @@ def go(ez, git_uri, compute_name, env_name):
 
     if compute_name is None:
         if ez.active_remote_compute == "":
+            # TODO: a more human friendly thing where I show you all the
+            # VMs in your resource group
             print("No active remote compute, specify the compute you want "
                 "to use using the --compute-name paramter.")
         else:
@@ -330,10 +332,16 @@ def go(ez, git_uri, compute_name, env_name):
     # - requires_gpu: True/False 
     # - base_container_image: name of the base container image
 
-    # HARD CODED for now
-    requires_gpu = True
-    base_container_image = "nvcr.io/nvidia/pytorch:21.08-py3"
-    
+    env_json_path = f"{local_env_path}/ez.json"
+    if path.exists(env_json_path):
+        with open(env_json_path, "r") as f:
+            ez_json = json.load(f)
+    else:
+        print("Need to have a default ez.json in the repo. Would you like "
+              "me to generate one for you? (TODO)")
+        # TODO: generate
+        exit(1)
+
     # Determine if the target compute is local or remote. If local, we will
     # need to clone the GH repo locally, if remote, we will need to use SSH
     # tunneling to clone the repo onto the VM in a pre-configured location.
@@ -430,7 +438,7 @@ def go(ez, git_uri, compute_name, env_name):
     # to clone the project locally as well.
 
     dockerfile = f"""
-FROM {base_container_image}
+FROM {ez_json["base_container_image"]}
 
 COPY requirements.txt /tmp/requirements.txt
 WORKDIR /tmp
