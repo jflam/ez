@@ -44,34 +44,9 @@ def exec_command(ez, command, fail_fast=True):
             if ez.debug:
                 print(f"DEBUG: {command}")
                 print("OUTPUT: ")
-
-            cumulative = ''
-            process = subprocess.Popen(command,
-                                       stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT,
-                                       shell=True)
-            while True:
-                # HACKHACK swallow unicode decode errors until I figure out 
-                # what the right encoding for console output that does 
-                # progress indicators like % completions
-                try:
-                    output = process.stdout.read(1).decode(sys.stdout.encoding)
-                    cumulative += output
-                except UnicodeDecodeError as err:
-                    pass
-
-                if output == '' and process.poll() != None:
-                    break
-
-                if ez.debug:
-                    sys.stdout.write(output)
-                    sys.stdout.flush()
-
-            if fail_fast and process.returncode != 0:
-                print(f"ERROR: {cumulative}")
-                exit(process.returncode)
-
-            return (process.returncode, cumulative.strip())
+            
+            result = subprocess.run(command.split(" "))
+            return (result.returncode, result.stdout.decode("utf-8"))
         except subprocess.CalledProcessError as err:
             error_message = err.output.decode(sys.stdout.encoding)
             if fail_fast:
@@ -147,6 +122,7 @@ def jit_activate_vm(ez, vm_name) -> None:
     # while attempting this. This issue has some code that might
     # be helpful (though it seems to old to be helpful in this case)
     # https://github.com/Azure/azure-cli/issues/9855
+    return
     if ez.disable_jit:
         return
 
