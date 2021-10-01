@@ -1,6 +1,7 @@
 # Compute commands
 
 import click
+import shlex
 import subprocess
 from os import path, system
 
@@ -68,7 +69,13 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
             f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
-        subprocess.run(az_vm_create.split(" "))
+        # TODO: need to make this robust across the board - new func
+        print(az_vm_create)
+        result = subprocess.run(shlex.split(az_vm_create))
+        if result.returncode != 0:
+            print(result.stderr)
+            exit(1)
+        
         # TODO: analyze output for correct flags
 
         enable_jit_access_on_vm(ez, compute_name)

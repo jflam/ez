@@ -200,6 +200,7 @@ def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
         ctx.obj.save()
     ctx.call_on_close(_save_context)
 
+# TODO: delete after refactor
 def exec_command_return_dataframe(cmd):
     result = subprocess.run(cmd.split(' '), capture_output=True)
     stdout = result.stdout.decode("utf-8")

@@ -2,7 +2,7 @@
 
 import click, json, os, random, subprocess, uuid
 
-from azutil import build_container_image, exec_command, launch_vscode
+from azutil import build_container_image, exec_command, launch_vscode, pick_vm
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 from os import getcwd, path
 
@@ -215,14 +215,14 @@ def ssh(ez, compute_name, env_name):
     subprocess.run(cmd.split(' '))
 
 @click.command()
-def stop():
-    """Stop an environment"""
+@click.pass_obj
+def stop(ez):
     pass
 
 @click.command()
-@click.option("--compute-name", "-c", required=True,
+@click.option("--compute-name", "-c", required=False,
               help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=True,
+@click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
 def up(ez, compute_name, env_name):
@@ -295,15 +295,22 @@ def go(ez, git_uri, compute_name, env_name):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
 
-    if compute_name is None:
-        if ez.active_remote_compute == "":
-            # TODO: a more human friendly thing where I show you all the
-            # VMs in your resource group
-            print("No active remote compute, specify the compute you want "
-                "to use using the --compute-name paramter.")
+    # If compute name is "-" OR there is no active compute defined, prompt
+    # the user to select (or create) a compute
+    if compute_name == "-":
+        print("Select which VM to use from this list of VMs provisioned "
+              f"in resource group {ez.resource_group}")
+        compute_name = pick_vm(ez.resource_group)
+    elif not compute_name:
+        # Use the current compute_name or prompt if none defined
+        if not ez.active_remote_compute:
+            print("Select which VM to use from this list of VMs provisioned "
+                f"in resource group {ez.resource_group}")
+            compute_name = pick_vm(ez.resource_group)
         else:
             compute_name = ez.active_remote_compute
-            print(f"Using {compute_name} to run {git_uri}")
+    else:
+        print(f"Using {compute_name} to run {git_uri}")
 
     if env_name is None:
         env_name = git_uri.split("/")[-1]

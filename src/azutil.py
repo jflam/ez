@@ -1,14 +1,18 @@
 # Utility functions for working with Azure
 
-from getpass import getuser
-from os import path, system, environ
-from os import makedirs, path, system
-from shutil import rmtree
-from time import sleep
 import json
+import pandas as pd
 import shlex
 import subprocess
 import sys
+
+from getpass import getuser
+from io import StringIO
+from os import path, system, environ
+from os import makedirs, path, system
+from rich.prompt import IntPrompt
+from shutil import rmtree
+from time import sleep
 
 def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
     """Execute script_name on vm_name.
@@ -45,8 +49,10 @@ def exec_command(ez, command, fail_fast=True):
                 print(f"DEBUG: {command}")
                 print("OUTPUT: ")
             
-            result = subprocess.run(command.split(" "))
-            return (result.returncode, result.stdout.decode("utf-8"))
+            result = subprocess.run(shlex.split(command))
+            output = ("" if result.stdout is None 
+                         else result.stdout.decode("utf-8"))
+            return (result.returncode, output)
         except subprocess.CalledProcessError as err:
             error_message = err.output.decode(sys.stdout.encoding)
             if fail_fast:
@@ -103,7 +109,6 @@ def is_gpu(vm_size):
     ]
     vm_size = vm_size.strip()
     result = vm_size in azure_gpu_sizes
-    print(f"{vm_size} is a GPU? {result}")
     return result
 
 def is_vm_running(ez, vm_name) -> bool:
@@ -535,3 +540,47 @@ def enable_jit_access_on_vm(ez, vm_name: str):
     print(f"ENABLING JIT activation for {vm_name}...")
     _, output = exec_command(ez, jit_command)
     ez.debug_print(f"RESULT {output}")
+
+# Helper functions
+
+def exec_command_return_dataframe(cmd):
+    # TODO: delegate to exec_command
+    result = subprocess.run(shlex.split(cmd), capture_output=True)
+    stdout = result.stdout.decode("utf-8")
+    stream = StringIO(stdout)
+    return pd.read_csv(stream, sep="\t", header=None)
+
+def pick_vm(resource_group, show_gpu_only=False):
+    """Display a list of VMs from the resource group"""
+
+    # Generate a dataframe that contains list of VMs in resource group
+    # and whether each VM contains a GPU
+    options = "Name:name, Size:hardwareProfile.vmSize, Running:powerState"
+    cmd = (f"az vm list --resource-group {resource_group} --query "
+           f"'[].{{{options}}}' -o tsv --show-details")
+    df = exec_command_return_dataframe(cmd)
+    df.columns = ["Name", "Size", "Running"]
+    df["GPU"] = df["Size"].apply(lambda s: is_gpu(s))
+
+    # Generate a list of options for the user to pick from reflecting
+    # the show_gpu_only flag
+    for i, row in df.iterrows():
+        if show_gpu_only:
+            if df["GPU"]:
+                print(f"{i} {row['Name']} ({row['Running']})")
+        else:
+            print(f"{i} {row['Name']} ({row['Running']})")
+    
+    # Get input from user
+    while True:
+        choice = IntPrompt.ask("Enter VM # to use or -1 to create a new VM",
+                               default=-1)
+        if choice >= -1 and choice < df.shape[0]:
+            break
+
+    if choice == -1:
+        print("TODO: implement create new VM option")
+        exit(1)
+
+    # Return the VM name to caller
+    return df.iloc[choice]["Name"]
