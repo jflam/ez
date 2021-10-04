@@ -3,6 +3,7 @@
 import click
 import constants as C
 
+from ez_state import Ez
 from os import path, system
 from rich import print
 
@@ -18,7 +19,7 @@ from rich import print
 @click.option("--user-name", "-u", default="ezuser", 
               help="Username for all VMs (default is ezuser)")
 @click.pass_obj
-def create(ez, workspace_name, subscription, region, 
+def create(ez: Ez, workspace_name, subscription, region, 
            private_key_path, user_name):
     """Create a workspace"""
 
@@ -70,7 +71,7 @@ def get_subscription_name(subscription):
 
 @click.command()
 @click.pass_obj
-def info(ez):
+def info(ez: Ez):
     """Show information about the ez workspace"""
     subscription_name = get_subscription_name(ez.subscription)
     subscription_info = f"{subscription_name} ({ez.subscription})"

@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from getpass import getuser
+from ez_state import Ez
 from io import StringIO
 from os import path, system, environ
 from os import makedirs, path, system
@@ -14,31 +15,21 @@ from rich.prompt import IntPrompt
 from shutil import rmtree
 from time import sleep
 
-def exec_script_using_ssh(ez, script_path, vm_name, cmd=""):
-    """Execute script_name on vm_name.
-    script_path must be an absolute path."""
-    if vm_name is None:
-        vm_name = ez.active_remote_compute
+# Execute commands, either locally or remotely
 
-    jit_activate_vm(ez, vm_name)
-    cmd = shlex.quote(cmd)
+def login(ez: Ez):
+    """Login using the interactive session user's credentials"""
+    if not ez.logged_in:
+        if system("az account show --query name > /dev/null") != 0:
+            system("az login --use-device-code > /dev/null")
 
-    ssh_cmd = (
-        f"cat {script_path} | "
-        f"ssh -o StrictHostKeyChecking=no "
-        f"-i {ez.private_key_path} "
-        f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com "
-        f"{cmd}"
-    )
-    return exec_command(ez, ssh_cmd)
-
-def exec_command(ez, command, fail_fast=True):
+def exec_command(ez: Ez, command, fail_fast=True):
     """Shell execute command and capture output. Returns a tuple of (return
     value, output). If --trace set globally then just display commands but
     don't actually execute."""
     if not ez.logged_in:
         ez.logged_in = True 
-        login()
+        login(ez)
 
     if ez.trace: 
         print(f"TRACE: {command}")
@@ -49,7 +40,10 @@ def exec_command(ez, command, fail_fast=True):
                 print(f"DEBUG: {command}")
                 print("OUTPUT: ")
             
+            cmd = shlex.split(command)
+            print(cmd)
             result = subprocess.run(shlex.split(command))
+            print(result)
             output = ("" if result.stdout is None 
                          else result.stdout.decode("utf-8"))
             return (result.returncode, output)
@@ -60,10 +54,23 @@ def exec_command(ez, command, fail_fast=True):
                 exit(err.returncode)
             return (err.returncode, error_message)
 
-def login():
-    """Login using the interactive session user's credentials"""
-    if system("az account show --query name > /dev/null") != 0:
-        system("az login --use-device-code > /dev/null")
+def exec_script_using_ssh(ez: Ez, script_path, vm_name, cmd=""):
+    """Execute script_name on vm_name.
+    script_path must be an absolute path."""
+    if vm_name is None:
+        vm_name = ez.active_remote_compute
+
+    jit_activate_vm(ez, vm_name)
+    # TODO: I don't think I can pipe using subprocess.run, need to construct
+    # the pipe manually!
+    ssh_cmd = (
+        f"cat '{script_path}' | "
+        f"ssh -o StrictHostKeyChecking=no "
+        f"-i {ez.private_key_path} "
+        f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com "
+        f"{cmd}"
+    )
+    return exec_command(ez, ssh_cmd)
 
 def is_gpu(vm_size):
     """Return true if vm_size is an Azure VM with a GPU"""
@@ -111,7 +118,44 @@ def is_gpu(vm_size):
     result = vm_size in azure_gpu_sizes
     return result
 
-def is_vm_running(ez, vm_name) -> bool:
+def get_active_compute_name(ez: Ez, compute_name) -> str:
+    """Get the active compute name or exit. Passing None for compute_name
+    returns the active remote compute, if it is set."""
+    if compute_name == None:
+        if ez.active_remote_compute == "":
+            print("No active remote compute, must specify --compute-name")
+            exit(1)
+        else:
+            return ez.active_remote_compute
+    else:
+        return compute_name
+
+def get_compute_size(ez: Ez, compute_name) -> str:
+    """Return the compute size of compute_name"""
+    # Special return value for localhost
+    if compute_name == '.':
+        return '.'
+
+    if ez.active_remote_compute_type == "k8s":
+        # TODO: handle case where compute_type is AKS
+        # For now, it always returns a GPU-enabled SKU
+        return "Standard_NC6_Promo"
+    elif ez.active_remote_compute_type == "vm":
+        ez.debug_print(f"GET compute size for {compute_name}...")
+        get_compute_size_cmd = (
+            f"az vm show --name {compute_name} "
+            f"--resource-group {ez.resource_group} "
+            f"--query hardwareProfile.vmSize -o tsv"
+        )
+        _, compute_size = exec_command(ez, get_compute_size_cmd)
+        ez.debug_print(f"RESULT: {compute_size}")
+        return compute_size
+    else:
+        print(f"Unknown active_remote_compute_type in ~/.ez.conf "
+            f"detected: {ez.active_remote_compute_type}")
+        exit(1)
+
+def is_vm_running(ez: Ez, vm_name) -> bool:
     is_running = (
         f"az vm list -d -o table --query "
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
@@ -120,7 +164,7 @@ def is_vm_running(ez, vm_name) -> bool:
     exit_code, _ = exec_command(ez, is_running, False)
     return True if exit_code == 0 else False
 
-def jit_activate_vm(ez, vm_name) -> None:
+def jit_activate_vm(ez: Ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
     # TODO: this is broken right now, they changed the resource ID
     # PolicyNotFound error coming back from the machine
@@ -211,9 +255,9 @@ def jit_activate_vm(ez, vm_name) -> None:
 
     ez.jit_activated = True
 
-def get_vm_size(ez, vm_name):
+def get_vm_size(ez: Ez, vm_name):
     """Return the VM size of vm_name"""
-    vm_name = ez.get_active_compute_name(vm_name)
+    vm_name = get_active_compute_name(ez, vm_name)
     info_cmd = (
         f"az vm get-instance-view --name {vm_name} "
         f"--resource-group {ez.resource_group} "
@@ -222,7 +266,7 @@ def get_vm_size(ez, vm_name):
     _, vm_size = exec_command(ez, info_cmd)
     return vm_size
 
-def generate_devcontainer_json(ez, jupyter_port_number, token, 
+def generate_devcontainer_json(ez: Ez, jupyter_port_number, token, 
                                local=False, has_gpu=False):
     """Generate an appropriate devcontainer.json file"""
     if local:
@@ -282,7 +326,7 @@ def generate_devcontainer_json(ez, jupyter_port_number, token,
     )
     return devcontainer_json
 
-def generate_settings_json(ez, is_local, jupyter_port_number, token):
+def generate_settings_json(ez: Ez, is_local, jupyter_port_number, token):
     """Generate an appropriate settings.json file"""
     if not is_local:
         settings_json = (
@@ -304,7 +348,7 @@ def generate_settings_json(ez, is_local, jupyter_port_number, token):
 
     return settings_json
 
-def generate_remote_settings_json(ez, jupyter_port_number, token):
+def generate_remote_settings_json(ez: Ez, jupyter_port_number, token):
     """Generate remote_settings.json file"""
     remote_settings_json = (
         f'{{\n'
@@ -314,7 +358,7 @@ def generate_remote_settings_json(ez, jupyter_port_number, token):
     )
     return remote_settings_json
 
-def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
+def build_container_image(ez: Ez, env_name, git_uri, jupyter_port, vm_name,
                           user_interface="code", force_git_clone=False, 
                           patch_file=None):
     """Build a container image either locally or remote"""
@@ -360,8 +404,8 @@ def build_container_image(ez, env_name, git_uri, jupyter_port, vm_name,
 
     ez.debug_print(f"DONE")
 
-def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name, 
-                            has_gpu, force_generate=False, 
+def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token, 
+                            vm_name, has_gpu, force_generate=False, 
                             is_k8s = False) -> str:
     """Generate a surrogate VS Code project at dir. Returns path to the 
     generated VS Code project."""
@@ -438,7 +482,7 @@ def generate_vscode_project(ez, dir, git_uri, jupyter_port, token, vm_name,
     
     return path_to_vsc_project
 
-def launch_vscode(ez, dir):
+def launch_vscode(ez: Ez, dir):
     """Launch either VS Code or VS Code Insiders on dir"""
 
     # This is launched in Windows, not WSL 2, so I need to get the path to the
@@ -476,7 +520,7 @@ def install_local_dependencies():
     # install docker
     # install ruamel.yaml (via conda!)
 
-def enable_jit_access_on_vm(ez, vm_name: str):
+def enable_jit_access_on_vm(ez: Ez, vm_name: str):
     return
     if ez.disable_jit:
         return 

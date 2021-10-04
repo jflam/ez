@@ -4,9 +4,11 @@ import click, json, os, random, subprocess, uuid
 
 from azutil import build_container_image, exec_command, launch_vscode, pick_vm
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
+from azutil import get_active_compute_name, get_compute_size
+from ez_state import Ez
 from os import getcwd, path
 
-def launch_user_interface(ez, user_interface, path_to_vscode_project, 
+def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project, 
                           jupyter_port, token):
     """Bind user_interface to the running instance"""
     if user_interface == "code":
@@ -16,7 +18,7 @@ def launch_user_interface(ez, user_interface, path_to_vscode_project,
         print(f"LAUNCH classic Jupyter "
               f"http://localhost:{jupyter_port}?token={token}")
 
-def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
+def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
     """Run the environment in Kubernetes"""
     path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
@@ -54,7 +56,7 @@ def run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
     print("TERMINATE using CTRL+C")
     exec_command(ez, kdo_cmd)
 
-def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
+def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
     """Run the environment in a VM"""
     build_container_image(ez, env_name, git_uri, jupyter_port, compute_name,
@@ -83,10 +85,10 @@ def run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
 @click.option("--force-generate", is_flag=True, default=False,
               help="Force generation of the local VS Code project")
 @click.pass_obj
-def run(ez, env_name, git_uri, user_interface, compute_name, git_clone, 
+def run(ez: Ez, env_name, git_uri, user_interface, compute_name, git_clone, 
         force_generate):
     """Create and run an environment"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
 
     # Initialize context
     ez.active_remote_compute = compute_name
@@ -96,7 +98,7 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
     jupyter_port = random.randint(1024, 8192)
     token = uuid.uuid4().hex 
 
-    compute_size = ez.get_compute_size(compute_name)
+    compute_size = get_compute_size(ez, compute_name)
     has_gpu = is_gpu(compute_size)
 
     if ez.active_remote_compute_type == 'vm':
@@ -113,7 +115,7 @@ def run(ez, env_name, git_uri, user_interface, compute_name, git_clone,
 
 @click.command()
 @click.pass_obj
-def ls(ez):
+def ls(ez: Ez):
     """List running environments"""
     pass
 
@@ -121,7 +123,7 @@ def ls(ez):
 @click.argument("src")
 @click.argument("dest")
 @click.pass_obj
-def cp(ez, src, dest):
+def cp(ez: Ez, src, dest):
     """
 Copy local files to/from an environment.
 
@@ -173,7 +175,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
-def ssh(ez, compute_name, env_name):
+def ssh(ez: Ez, compute_name, env_name):
     """SSH to an environment"""
     if not ez.active_remote_compute:
         if not compute_name:
@@ -216,7 +218,7 @@ def ssh(ez, compute_name, env_name):
 
 @click.command()
 @click.pass_obj
-def stop(ez):
+def stop(ez: Ez):
     pass
 
 @click.command()
@@ -225,7 +227,7 @@ def stop(ez):
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
-def up(ez, compute_name, env_name):
+def up(ez: Ez, compute_name, env_name):
     """Migrate the current environment to a new compute node"""
 
     # Let's assume that we are in a local environment for the purpose
@@ -268,7 +270,7 @@ def up(ez, compute_name, env_name):
     print(f"STARTING {git_remote_uri} on {compute_name}")
     jupyter_port = 1235
     token = "1234"
-    compute_size = ez.get_compute_size(compute_name)
+    compute_size = get_compute_size(ez, compute_name)
     has_gpu = is_gpu(compute_size)
     build_container_image(ez, env_name, git_remote_uri, jupyter_port,
                           compute_name, "code", True, patch_file)
@@ -291,7 +293,7 @@ def exec_subprocess(cmd: str, dir = None) -> None:
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
-def go(ez, git_uri, compute_name, env_name):
+def go(ez: Ez, git_uri, compute_name, env_name):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
 
@@ -455,6 +457,10 @@ RUN pip install -v -r requirements.txt
     dockerfile_path = f"{devcontainer_dir}/Dockerfile"
     with open(dockerfile_path, "wt+", encoding="utf-8") as f:
         f.write(dockerfile)
+
+    # If the resource group contains ACR, we could optionally build the 
+    # docker image there and import it
+    
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of

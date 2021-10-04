@@ -7,6 +7,8 @@ from os import path, system
 
 from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
+from azutil import get_active_compute_name, get_compute_size
+from ez_state import Ez
 from rich import print
 
 @click.command()
@@ -23,7 +25,8 @@ from rich import print
               help=("Check if DNS name is available for "
               "--compute-name in region"))
 @click.pass_obj
-def create(ez, compute_name, compute_size, compute_type, image, check_dns):
+def create(ez: Ez, compute_name, compute_size, compute_type, image, 
+           check_dns):
     """Create a compute node"""
 
     # User can pass in nothing for --compute-size and we will helpfully list
@@ -110,7 +113,7 @@ def create(ez, compute_name, compute_size, compute_type, image, check_dns):
               help="Size of Azure VM or '.' for local creation")
 @click.command()
 @click.pass_obj
-def install_system(ez, compute_name, compute_size):
+def install_system(ez: Ez, compute_name, compute_size):
     print(f"INSTALLING system software on virtual machine")
     provision_vm_script = "provision-cpu"
     if is_gpu(compute_size):
@@ -126,9 +129,9 @@ def install_system(ez, compute_name, compute_size):
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to delete")
 @click.pass_obj
-def delete(ez, compute_name):
+def delete(ez: Ez, compute_name):
     """Delete a compute node"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
     print(f"DELETING compute node {compute_name}")
     exec_command(ez, (
         f"az vm delete --yes --name {compute_name} "
@@ -137,7 +140,7 @@ def delete(ez, compute_name):
 
 @click.command()
 @click.pass_obj
-def ls(ez):
+def ls(ez: Ez):
     """List running compute nodes"""
     ls_cmd = (
         f"az vm list -d --resource-group {ez.resource_group} "
@@ -160,10 +163,10 @@ def ls(ez):
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to start")
 @click.pass_obj
-def start(ez, compute_name):
+def start(ez: Ez, compute_name):
     """Start a virtual machine"""
     # TODO: do nothing if compute-name is not a VM
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
     jit_activate_vm(ez, compute_name)
     exec_command(ez, (
         f"az vm start --name {compute_name} "
@@ -174,9 +177,9 @@ def start(ez, compute_name):
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to stop")
 @click.pass_obj
-def stop(ez, compute_name):
+def stop(ez: Ez, compute_name):
     """Stop a virtual machine"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
     # TODO: get compute_type too and fail for now on this
     print(f"STOPPING compute node {compute_name}")
     exec_command(ez, (
@@ -187,9 +190,9 @@ def stop(ez, compute_name):
 @click.command()
 @click.option("--compute-name", "-n", help="Name of VM to ssh into")
 @click.pass_obj
-def ssh(ez, compute_name):
+def ssh(ez: Ez, compute_name):
     """SSH to a virtual machine"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
     # TODO: get compute_type too and fail for now on this
     jit_activate_vm(ez, compute_name)
     ssh_remote_host = (
@@ -211,9 +214,9 @@ def ssh(ez, compute_name):
               help=("Type of compute: vm (virtual machine) or "
               "k8s (Kubernetes)"))
 @click.pass_obj
-def select(ez, compute_name, compute_type):
+def select(ez: Ez, compute_name, compute_type):
     """Select a compute node"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
 
     if compute_type == "vm":
         _ = get_vm_size(ez, compute_name)
@@ -234,9 +237,9 @@ def select(ez, compute_name, compute_type):
 @click.command()
 @click.option("--compute-name", "-n", help="Name of compute node")
 @click.pass_obj
-def info(ez, compute_name):
+def info(ez: Ez, compute_name):
     """Get info about compute hardware"""
-    compute_name = ez.get_active_compute_name(compute_name)
+    compute_name = get_active_compute_name(ez, compute_name)
     compute_size = get_vm_size(ez, compute_name)
     # TODO: do this with AKS and the correct compute pool
 
