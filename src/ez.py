@@ -57,17 +57,16 @@ def check_dependencies(force = False) -> bool:
 
 @click.group()
 @click.option("--debug", is_flag=True, help="Output diagnostic information")
-@click.option("--trace", is_flag=True, help="Trace execution")
 @click.option("--insiders", is_flag=True, help="Run using VS Code Insiders")
 @click.option("--dependencies", is_flag=True, help="Force check dependencies")
 @click.option("--disable-jit", is_flag=True, help="Disable JIT activation")
 @click.pass_context
-def ez(ctx, debug, trace, insiders, dependencies, disable_jit):
+def ez(ctx, debug, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
     environments. To get started run ez init!"""
     # TODO: restore this once jit support is back
-    # ctx.obj = Ez(debug, trace, insiders, disable_jit)
-    ctx.obj = Ez(debug, trace, insiders, True)
+    # ctx.obj = Ez(debug, insiders, disable_jit)
+    ctx.obj = Ez(debug, insiders, True)
     if not check_dependencies(dependencies):
         exit(1)
     def _save_context():

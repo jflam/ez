@@ -21,38 +21,32 @@ def login(ez: Ez):
     """Login using the interactive session user's credentials"""
     if not ez.logged_in:
         if system("az account show --query name > /dev/null") != 0:
-            system("az login --use-device-code > /dev/null")
+            success = system("az login --use-device-code > /dev/null")
+            if success == 0:
+                ez.logged_in = True
+            else:
+                print("LOGIN error, ez terminating")
+                exit(1)
 
 def exec_command(ez: Ez, command, fail_fast=True):
     """Shell execute command and capture output. Returns a tuple of (return
-    value, output). If --trace set globally then just display commands but
-    don't actually execute."""
-    if not ez.logged_in:
-        ez.logged_in = True 
-        login(ez)
-
-    if ez.trace: 
-        print(f"TRACE: {command}")
-        return (0, "")
-    else:
-        try:
-            if ez.debug:
-                print(f"DEBUG: {command}")
-                print("OUTPUT: ")
-            
-            cmd = shlex.split(command)
-            print(cmd)
-            result = subprocess.run(shlex.split(command))
-            print(result)
-            output = ("" if result.stdout is None 
-                         else result.stdout.decode("utf-8"))
-            return (result.returncode, output)
-        except subprocess.CalledProcessError as err:
-            error_message = err.output.decode(sys.stdout.encoding)
-            if fail_fast:
-                print(f"ERROR: {error_message}")
-                exit(err.returncode)
-            return (err.returncode, error_message)
+    value, output)."""
+    login(ez)
+    try:
+        if ez.debug:
+            print(f"DEBUG: {command}")
+            print("OUTPUT: ")
+        
+        result = subprocess.run(shlex.split(command))
+        output = ("" if result.stdout is None 
+                        else result.stdout.decode("utf-8"))
+        return (result.returncode, output)
+    except subprocess.CalledProcessError as err:
+        error_message = err.output.decode(sys.stdout.encoding)
+        if fail_fast:
+            print(f"ERROR: {error_message}")
+            exit(err.returncode)
+        return (err.returncode, error_message)
 
 def exec_script_using_ssh(ez: Ez, script_path, vm_name, cmd=""):
     """Execute script_name on vm_name.
@@ -71,6 +65,13 @@ def exec_script_using_ssh(ez: Ez, script_path, vm_name, cmd=""):
         f"{cmd}"
     )
     return exec_command(ez, ssh_cmd)
+
+def exec_command_return_dataframe(cmd):
+    # TODO: delegate to exec_command
+    result = subprocess.run(shlex.split(cmd), capture_output=True)
+    stdout = result.stdout.decode("utf-8")
+    stream = StringIO(stdout)
+    return pd.read_csv(stream, sep="\t", header=None)
 
 def is_gpu(vm_size):
     """Return true if vm_size is an Azure VM with a GPU"""
@@ -585,14 +586,6 @@ def enable_jit_access_on_vm(ez: Ez, vm_name: str):
     _, output = exec_command(ez, jit_command)
     ez.debug_print(f"RESULT {output}")
 
-# Helper functions
-
-def exec_command_return_dataframe(cmd):
-    # TODO: delegate to exec_command
-    result = subprocess.run(shlex.split(cmd), capture_output=True)
-    stdout = result.stdout.decode("utf-8")
-    stream = StringIO(stdout)
-    return pd.read_csv(stream, sep="\t", header=None)
 
 def pick_vm(resource_group, show_gpu_only=False):
     """Display a list of VMs from the resource group"""
