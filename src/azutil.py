@@ -7,13 +7,17 @@ import subprocess
 import sys
 
 from getpass import getuser
+
+from rich.console import Console
 from ez_state import Ez
 from io import StringIO
 from os import path, system, environ
 from os import makedirs, path, system
 from rich.prompt import IntPrompt
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from shutil import rmtree
 from time import sleep
+from typing import Tuple
 
 # Execute commands, either locally or remotely
 
@@ -28,43 +32,76 @@ def login(ez: Ez):
                 print("LOGIN error, ez terminating")
                 exit(1)
 
-def exec_command(ez: Ez, command, fail_fast=True):
-    """Shell execute command and capture output. Returns a tuple of (return
-    value, output)."""
+def exec_command(ez: Ez, 
+                 command: str, 
+                 debug: bool=False,
+                 log: bool=False, 
+                 description: str="", 
+                 input_file_path: str=None,
+                 cwd: str=None,
+                 stdin: str=None) -> Tuple[int, str]:
+    """Shell execute command and optionally log output incrementally."""
     login(ez)
-    try:
-        if ez.debug:
-            print(f"DEBUG: {command}")
-            print("OUTPUT: ")
-        
-        result = subprocess.run(shlex.split(command))
-        output = ("" if result.stdout is None 
-                        else result.stdout.decode("utf-8"))
-        return (result.returncode, output)
-    except subprocess.CalledProcessError as err:
-        error_message = err.output.decode(sys.stdout.encoding)
-        if fail_fast:
-            print(f"ERROR: {error_message}")
-            exit(err.returncode)
-        return (err.returncode, error_message)
+    command_array = shlex.split(command)
+    if debug:
+        print(command_array)
+    if input_file_path is not None:
+        with open(input_file_path, "rt") as f:
+            stdin = f.read()
 
-def exec_script_using_ssh(ez: Ez, script_path, vm_name, cmd=""):
+    p = subprocess.Popen(command_array, 
+                         cwd=cwd,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE,
+                         stdin=subprocess.PIPE)
+    if stdin is not None:
+        p.stdin.write(stdin.encode("utf-8"))
+        p.stdin.close()
+
+    console = Console(height=20, force_interactive=True)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        t = progress.add_task(description)
+
+        output = []
+        while True:
+            retcode = p.poll()
+            line = p.stdout.readline().decode("utf-8").strip()
+            output.append(line)
+            if log:
+                progress.console.log(line)
+            if retcode is not None:
+                break
+
+        progress.console.bell()
+        progress.update(t, description=f"Completed {description}")
+        return (p.returncode, "\n".join(output))
+    
+def exec_script_using_ssh(ez: Ez, 
+                          script_path: str, 
+                          compute_name :str, 
+                          description: str=""):
     """Execute script_name on vm_name.
     script_path must be an absolute path."""
-    if vm_name is None:
-        vm_name = ez.active_remote_compute
+    if compute_name is None:
+        compute_name = ez.active_remote_compute
 
-    jit_activate_vm(ez, vm_name)
-    # TODO: I don't think I can pipe using subprocess.run, need to construct
-    # the pipe manually!
+    jit_activate_vm(ez, compute_name)
     ssh_cmd = (
-        f"cat '{script_path}' | "
-        f"ssh -o StrictHostKeyChecking=no "
+        f"ssh -tt -o StrictHostKeyChecking=no "
         f"-i {ez.private_key_path} "
-        f"{ez.user_name}@{vm_name}.{ez.region}.cloudapp.azure.com "
-        f"{cmd}"
+        f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
     )
-    return exec_command(ez, ssh_cmd)
+    retval, output = exec_command(ez, 
+                                  ssh_cmd, 
+                                  log=True, 
+                                  description=description, 
+                                  input_file_path=script_path)
+    return (retval, output)
 
 def exec_command_return_dataframe(cmd):
     # TODO: delegate to exec_command
@@ -264,7 +301,8 @@ def get_vm_size(ez: Ez, vm_name):
         f"--resource-group {ez.resource_group} "
         f"--query hardwareProfile.vmSize -o tsv"
     )
-    _, vm_size = exec_command(ez, info_cmd)
+    description = f"[green]QUERYING[/green] {vm_name} for its size..."
+    _, vm_size = exec_command(ez, info_cmd, description=description)
     return vm_size
 
 def generate_devcontainer_json(ez: Ez, jupyter_port_number, token, 
@@ -595,6 +633,7 @@ def pick_vm(resource_group, show_gpu_only=False):
     options = "Name:name, Size:hardwareProfile.vmSize, Running:powerState"
     cmd = (f"az vm list --resource-group {resource_group} --query "
            f"'[].{{{options}}}' -o tsv --show-details")
+    print(cmd)
     df = exec_command_return_dataframe(cmd)
     df.columns = ["Name", "Size", "Running"]
     df["GPU"] = df["Size"].apply(lambda s: is_gpu(s))

@@ -1,6 +1,5 @@
 import click
 import constants as C
-import json
 import os
 import pandas as pd
 import pathlib
@@ -266,21 +265,33 @@ def init(ez: Ez):
     keyfile_path = os.path.expanduser(f"~/.ssh/{keyfile}")
     print(f"SSH keyfile: {keyfile}/{keyfile}.pub")
 
-    # Write the configuration file
-    ez_config = {
-        "workspace_name": workspace_name,
-        "resource_group": workspace_resource_group,
-        "registry_name": registry_name,
-        "subscription": subscription_id,
-        "region": workspace_region,
-        "private_key_path": keyfile_path,
-        "user_name": user_name,
+    # Set the configuration
+    ez.workspace_name = workspace_name
+    ez.resource_group = workspace_resource_group
+    ez.registry_name = registry_name
+    ez.subscription = subscription_id
+    ez.region = workspace_region
+    ez.private_key_path = keyfile_path
+    ez.user_name = user_name
+    ez.active_remote_compute = ""
+    ez.active_remote_compute_type = ""
+    ez.active_remote_env = ""
+    
+    # # Write the configuration file
+    # ez_config = {
+    #     "workspace_name": workspace_name,
+    #     "resource_group": workspace_resource_group,
+    #     "registry_name": registry_name,
+    #     "subscription": subscription_id,
+    #     "region": workspace_region,
+    #     "private_key_path": keyfile_path,
+    #     "user_name": user_name,
 
-        # Define fields
-        "active_compute": "",
-        "active_compute_type": "",
-        "active_env": ""
-    }
+    #     # Define fields
+    #     "active_compute": "",
+    #     "active_compute_type": "",
+    #     "active_env": ""
+    # }
 
     ez_config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
     if os.path.isfile(ez_config_path):
@@ -291,8 +302,8 @@ def init(ez: Ez):
         else:
             exit(0)
 
-    with open(ez_config_path, "w") as f:
-        json.dump(ez_config, f, indent=4)
+    # with open(ez_config_path, "w") as f:
+    #     json.dump(ez_config, f, indent=4)
 
     print(f"""
 ez is now configured, configuration file written to {ez_config_path}.
@@ -356,7 +367,7 @@ compute.add_command(compute_commands.stop)
 compute.add_command(compute_commands.select)
 compute.add_command(compute_commands.info)
 compute.add_command(compute_commands.ssh)
-compute.add_command(compute_commands.install_system)
+compute.add_command(compute_commands.update_system)
 
 # environment sub-commands
 

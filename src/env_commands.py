@@ -7,6 +7,7 @@ from azutil import generate_vscode_project, is_gpu, jit_activate_vm
 from azutil import get_active_compute_name, get_compute_size
 from ez_state import Ez
 from os import getcwd, path
+from rich import print
 
 def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project, 
                           jupyter_port, token):
@@ -282,8 +283,8 @@ def up(ez: Ez, compute_name, env_name):
     launch_vscode(ez, path_to_vscode_project)
     exit(0)
 
-def exec_subprocess(cmd: str, dir = None) -> None:
-    subprocess.run(cmd.split(' '), cwd=dir)
+# def exec_subprocess(cmd: str, dir = None) -> None:
+#     subprocess.run(cmd.split(' '), cwd=dir)
 
 @click.command()
 @click.option("--git-uri", "-g", required=True, 
@@ -292,10 +293,14 @@ def exec_subprocess(cmd: str, dir = None) -> None:
               help="Compute name to migrate the environment to")
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
+@click.option("--use-acr", is_flag=True, default=False,
+              help="Generate container using Azure Container Registry")
 @click.pass_obj
-def go(ez: Ez, git_uri, compute_name, env_name):
+def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
+
+    # TODO: validate this running locally where compute_name == "."
 
     # If compute name is "-" OR there is no active compute defined, prompt
     # the user to select (or create) a compute
@@ -304,6 +309,7 @@ def go(ez: Ez, git_uri, compute_name, env_name):
               f"in resource group {ez.resource_group}")
         compute_name = pick_vm(ez.resource_group)
     elif not compute_name:
+        # TODO: special case for local "."
         # Use the current compute_name or prompt if none defined
         if not ez.active_remote_compute:
             print("Select which VM to use from this list of VMs provisioned "
@@ -329,12 +335,17 @@ def go(ez: Ez, git_uri, compute_name, env_name):
     local_env_path = f"{getcwd()}/{env_name}"
 
     if path.exists(local_env_path):
-        print(f"UPDATING {git_uri} in {local_env_path}")
-        exec_subprocess("git pull", local_env_path)
+        description = f"[green]UPDATING[/green] {git_uri} in {local_env_path}"
+        exec_command(ez, 
+                     "git pull", 
+                     description=description, 
+                     cwd=local_env_path)
     else:
         git_cmd = f"git clone {git_uri} {local_env_path}"
-        print(f"CLONING {git_uri} into {local_env_path}")
-        exec_subprocess(git_cmd)
+        description = f"[green]CLONING[/green] {git_uri} into {local_env_path}"
+        exec_command(ez, 
+                     git_cmd, 
+                     description=description)
 
     # Read the ez.json configuration file at the root of the repository. This
     # needs to be read per project and contains some additional information:
@@ -351,6 +362,11 @@ def go(ez: Ez, git_uri, compute_name, env_name):
         # TODO: generate
         exit(1)
 
+    # Check to see if the remote compute has the GPU capability if needed and
+    # fail if it doesn't.
+
+    # Start the remote compute if necessary. Wait for it to complete starting
+
     # Determine if the target compute is local or remote. If local, we will
     # need to clone the GH repo locally, if remote, we will need to use SSH
     # tunneling to clone the repo onto the VM in a pre-configured location.
@@ -359,6 +375,8 @@ def go(ez: Ez, git_uri, compute_name, env_name):
     # the remote VM. If the repo was already cloned on the VM, then we need
     # to cd into the dir and git pull that repo. Otherwise just do the clone.
     remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
+
+    # TODO: this is better sent as a bash script to the server
     remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && cd {remote_env_path} "
                        f"&& git pull")
     remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
@@ -369,47 +387,89 @@ def go(ez: Ez, git_uri, compute_name, env_name):
         f"ssh -o StrictHostKeyChecking=no "
         f"-i {ez.private_key_path} {ssh_connection} {remote_pull_cmd}"
     )
-    print(f"Clone/update {git_uri} on {compute_name} at {remote_env_path}")
-    exec_subprocess(remote_ssh_cmd)
+    description = (f"[green]CLONE/UPDATE[/green] {git_uri} on {compute_name} "
+                   f"at {remote_env_path}")
+    exec_command(ez, remote_ssh_cmd, description=description)
     remote_ssh_cmd = (
         f"ssh -o StrictHostKeyChecking=no "
         f"-i {ez.private_key_path} {ssh_connection} {remote_clone_cmd}"
     )
-    exec_subprocess(remote_ssh_cmd)
+    exec_command(ez, remote_ssh_cmd, description=description)
 
-    # Check to see if the remote compute has the GPU capability if needed and
-    # fail if it doesn't.
-
-    # Start the remote compute if necessary. Wait for it to complete starting
+    # The .vscode directory contains a dynamically generated settings.json
+    # file which points to the VM that the remote container will run on.
 
     # If it is a remote launch, we will need to generate the information
     # needed for the local devcontainer.json file, as well as for the
     # settings.json file that contains the .vscode/settings.json file that
     # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
+
+    print(f"[green]GENERATING[/green] .vscode/settings.json")
     settings_json = f"""
 {{
     "docker.host": "ssh://{ssh_connection}",
 }}
 """
-    print(f"GENERATING .vscode/settings.json")
     vscode_dir = f"{local_env_path}/.vscode"
     settings_json_path = f"{vscode_dir}/settings.json"
     if not os.path.exists(vscode_dir):
         os.mkdir(vscode_dir)
-    
-    # Always overwrite these configuration files
     with open(settings_json_path, "wt+", encoding="utf-8") as f:
         f.write(settings_json)
 
     # Generate the devcontainer.json file. Much of this will eventually be
     # parameterized
+
+    # The .devcontainer directory contains dynamically generated artifacts:
+    #
+    # 1. The devcontainer.json file that instructs VS Code what to do to
+    #    create the container
+    # 2. The generated Dockerfile that instructs Docker what to do to build
+    #    the container
+    # 3. The requirements.txt or environment.yml file that is called from the
+    #    Dockerfile to install the python modules needed to run the code
+    # 4. Any additional python files that are used to initialize the
+    #    container, e.g., downloading data, caching models etc. 
+    #
+    # Note that 3) and 4) are all contained within the /build directory at the
+    # root of the GitHub repo and are copied into the .devcontainer directory.
+    # Those files could all be run from the /build directory as well with
+    # a hand-written Dockerfile
+
+    print(f"[green]GENERATING[/green] .devcontainer/devcontainer.json")
     if compute_name == ".":
         mount_path = local_env_path
     else:
         mount_path = remote_env_path
 
+    # The generated devcontainer.json file will differ based on whether we 
+    # are letting remote containers generate the container on the VM or 
+    # whether we will ask it to pull from ACR on the remote machine.
+
+    # In the case where it pulls the image from ACR, the remote machine will
+    # need to have the ability to access ACR, which means that it will need
+    # to have an Azure public/private key pair in place unless I make the
+    # ACR image publicly accessible.
+
+    # Using tokens for this and the compute must be configured to use it
+    # by logging in automatically into Docker when you ask it to.
+
+    if use_acr:
+        if ez.registry_name is None:
+            print(f"[red]ERROR:[/red] resource group {ez.resource_group} "
+                  f"does not have a Container Registry configured.")
+            exit(1)
+        docker_source=f"""
+    "image": "{ez.registry_name}.azurecr.io/{env_name}",
+"""
+    else:
+        docker_source=f"""
+    "dockerFile": "./Dockerfile",
+"""
+
     devcontainer_json = f"""
 {{
+    {docker_source}
     "containerUser": "root",
     "workspaceFolder": "/workspace",
     "workspaceMount": "source={mount_path},target=/workspace,type=bind,consistency=cached",
@@ -421,10 +481,8 @@ def go(ez: Ez, git_uri, compute_name, env_name):
         "--gpus=all",
         "--ipc=host",
     ],
-    "dockerFile": "./Dockerfile",
 }}
 """
-    print(f"GENERATING .devcontainer/devcontainer.json")
     devcontainer_dir = f"{local_env_path}/.devcontainer"
     devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
     if not os.path.exists(devcontainer_dir):
@@ -443,32 +501,52 @@ def go(ez: Ez, git_uri, compute_name, env_name):
 
     # To generate the Dockerfile, information will be needed from the repo.
     # This first version of the command will just clone the repo into the
-    # surrogate project directory. A future optimization will avoid the need
-    # to clone the project locally as well.
+    # surrogate project directory. A future optimization may avoid the need to
+    # clone the project locally as well.
 
-    dockerfile = f"""
+    # Copy files from the /build directory into the .devcontainer directory
+    cmd = "cp ../build/* ."
+    exec_command(ez, 
+        cmd, 
+        cwd=devcontainer_dir, 
+        description="[green]COPYING[/green] /build files to /.devcontainer")
+
+    # Only generate a default Dockerfile if the user doesn't supply one in
+    # their /build directory
+    if not os.path.exists(f"{devcontainer_dir}/Dockerfile"):
+        dockerfile = f"""
 FROM {ez_json["base_container_image"]}
 
 COPY requirements.txt /tmp/requirements.txt
 WORKDIR /tmp
 RUN pip install -v -r requirements.txt
-"""
-    print(f"GENERATING .devcontainer/Dockerfile")
-    dockerfile_path = f"{devcontainer_dir}/Dockerfile"
-    with open(dockerfile_path, "wt+", encoding="utf-8") as f:
-        f.write(dockerfile)
+    """
+        print(f"[green]GENERATING[/green] default .devcontainer/Dockerfile")
+        dockerfile_path = f"{devcontainer_dir}/Dockerfile"
+        with open(dockerfile_path, "wt+", encoding="utf-8") as f:
+            f.write(dockerfile)
 
     # If the resource group contains ACR, we could optionally build the 
-    # docker image there and import it
-    
+    # docker image there and import it. Sample command:
+    #
+    # az acr build --registry jflamregistry --image wine . 
+    if use_acr:
+        cmd = (f"az acr build --registry {ez.registry_name} "
+               f"--image {env_name} .")
+        exec_command(ez, 
+            cmd, 
+            cwd=f"{local_env_path}/build",
+            log=True,
+            description=("[green]BUILDING[/green] container image using "
+                         "ACR Tasks"))
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
     # the remote bug in devcontainer, we will avoid doing this for now and
     # manually reopen the VS Code project.
-    print(f"LAUNCHING VS Code ... you will need to reload in remote container"
-          f"by clicking the Reopen in Container button in the notification "
-          f"box in the bottom right corner.")
+    print(f"[green]LAUNCHING[/green] VS Code ... you will need to reload in "
+          f"remote container by clicking the Reopen in Container button in "
+          f"the notification box in the bottom right corner.")
     launch_vscode(ez, local_env_path)
 
     # Update ez state

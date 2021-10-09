@@ -58,10 +58,11 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # TODO: parameterize this in .ez.conf
         os_disk_size = 256
 
-        print((
-            f"CREATING virtual machine {compute_name} size {compute_size} "
-            f"in resource group {ez.resource_group}..."))
-        az_vm_create = (
+        description = (
+            f"[green]CREATING[/green] virtual machine {compute_name} size "
+            f"{compute_size} in resource group {ez.resource_group}...")
+
+        cmd = (
             f"az vm create --name {compute_name}"
             f"             --resource-group {ez.resource_group}"
             f"             --size {compute_size}"
@@ -72,23 +73,24 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
             f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
-        # TODO: need to make this robust across the board - new func
-        print(az_vm_create)
-        result = subprocess.run(shlex.split(az_vm_create))
-        if result.returncode != 0:
-            print(result.stderr)
+        returncode, out = exec_command(ez, cmd, description=description)
+        if returncode != 0:
+            print(out)
             exit(1)
         
         # TODO: analyze output for correct flags
-
         enable_jit_access_on_vm(ez, compute_name)
 
-        print(f"INSTALLING system software on virtual machine")
+        description = f"[green]INSTALLING[/green] system software on compute"
         provision_vm_script_path = (
             f"{path.dirname(path.realpath(__file__))}/scripts/"
             f"{provision_vm_script}"
         )
-        exec_script_using_ssh(ez, provision_vm_script_path, compute_name, "")
+        exec_script_using_ssh(
+            ez, 
+            provision_vm_script_path, 
+            compute_name, 
+            description=description)
 
         # Now enable ssh on the remote machine
         # 1. generate key using ssh-keygen on remote machine
@@ -106,15 +108,15 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         print(f"Unknown --compute-type: {compute_type}")
         exit(1)
 
-# TODO: remove this - this is temporary to unblock
 @click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to create")
+              help="Name of compute to update")
 @click.option("--compute-size", "-s", 
-              help="Size of Azure VM or '.' for local creation")
+              help="Size of Azure VM or '.' for local update")
 @click.command()
 @click.pass_obj
-def install_system(ez: Ez, compute_name, compute_size):
-    print(f"INSTALLING system software on virtual machine")
+def update_system(ez: Ez, compute_name, compute_size):
+    """Update the system software on compute"""
+    description = f"[green]UPDATING[/green] system software on compute"
     provision_vm_script = "provision-cpu"
     if is_gpu(compute_size):
         provision_vm_script = "provision-gpu"
@@ -122,7 +124,12 @@ def install_system(ez: Ez, compute_name, compute_size):
         f"{path.dirname(path.realpath(__file__))}/scripts/"
         f"{provision_vm_script}"
     )
-    exec_script_using_ssh(ez, provision_vm_script_path, compute_name, "")
+    exec_script_using_ssh(
+        ez, 
+        provision_vm_script_path, 
+        compute_name, 
+        description=description)
+    # Update current remote compute state
     ez.active_remote_compute = compute_name 
     ez.active_remote_compute_type = "vm"
 
@@ -132,10 +139,11 @@ def install_system(ez: Ez, compute_name, compute_size):
 def delete(ez: Ez, compute_name):
     """Delete a compute node"""
     compute_name = get_active_compute_name(ez, compute_name)
-    print(f"DELETING compute node {compute_name}")
+    description = f"[green]DELETING[/green] compute node {compute_name}"
     exec_command(ez, (
         f"az vm delete --yes --name {compute_name} "
-        f"--resource-group {ez.resource_group}"))
+        f"--resource-group {ez.resource_group}"),
+        description=description)
     exit(0)
 
 @click.command()
@@ -146,8 +154,10 @@ def ls(ez: Ez):
         f"az vm list -d --resource-group {ez.resource_group} "
         f"--query=\"[?powerState=='VM running'].[name]\" -o tsv"
     )
-    _, output = exec_command(ez, ls_cmd)
+    description = f"[green]QUERYING[/green] Azure..."
+    _, output = exec_command(ez, ls_cmd, description=description)
 
+    # TODO cleanup output
     print("RUNNING VMs (* == current)")
     lines = output.splitlines()
     for line in lines:
@@ -168,9 +178,10 @@ def start(ez: Ez, compute_name):
     # TODO: do nothing if compute-name is not a VM
     compute_name = get_active_compute_name(ez, compute_name)
     jit_activate_vm(ez, compute_name)
-    exec_command(ez, (
-        f"az vm start --name {compute_name} "
-        f"--resource-group {ez.resource_group}"))
+    exec_command(ez, 
+                 (f"az vm start --name {compute_name} "
+                  f"--resource-group {ez.resource_group}"),
+                 description=f"STARTING compute node {compute_name}")
     ez.active_remote_compute = compute_name
     exit(0)
 
@@ -181,10 +192,10 @@ def stop(ez: Ez, compute_name):
     """Stop a virtual machine"""
     compute_name = get_active_compute_name(ez, compute_name)
     # TODO: get compute_type too and fail for now on this
-    print(f"STOPPING compute node {compute_name}")
-    exec_command(ez, (
-        f"az vm deallocate --name {compute_name} "
-        f"--resource-group {ez.resource_group}"))
+    exec_command(ez, 
+                 (f"az vm deallocate --name {compute_name} "
+                  f"--resource-group {ez.resource_group}"),
+                 description=f"STOPPING compute node {compute_name}")
     exit(0)
 
 @click.command()
@@ -195,18 +206,18 @@ def ssh(ez: Ez, compute_name):
     compute_name = get_active_compute_name(ez, compute_name)
     # TODO: get compute_type too and fail for now on this
     jit_activate_vm(ez, compute_name)
+    ez.active_remote_compute = compute_name
     ssh_remote_host = (
         f"{ez.user_name}@{compute_name}."
         f"{ez.region}.cloudapp.azure.com"
     )
-    ez.active_remote_compute = compute_name
-
-    print(f"[green]CONNECTING[/green] to {ssh_remote_host}")
-    system((
+    cmd = (
         f"ssh -i {ez.private_key_path} "
         f" -o StrictHostKeyChecking=no "
         f"{ssh_remote_host}"
-    ))
+    )
+    print(f"[green]CONNECTING[/green] to {ssh_remote_host}")
+    system(cmd)
 
 @click.command()
 @click.option("--compute-name", "-n", help="Name of compute node")
@@ -218,6 +229,7 @@ def select(ez: Ez, compute_name, compute_type):
     """Select a compute node"""
     compute_name = get_active_compute_name(ez, compute_name)
 
+    # TODO: implement menu
     if compute_type == "vm":
         _ = get_vm_size(ez, compute_name)
 
@@ -244,10 +256,18 @@ def info(ez: Ez, compute_name):
     # TODO: do this with AKS and the correct compute pool
 
     # Now use the vm_size to get hardware details 
-    _, details = exec_command(ez, 
-        f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}")
-    specs = details.split("\t")
-    print((
-        f"VM INFO for {compute_name} size: {specs[2]}: "
-        f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
-    exit(0)
+    description = f"[green]QUERYING[/green] {compute_name} for details..."
+    retcode, out = exec_command(
+        ez, 
+        f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}",
+        description=description,
+        debug=True)
+    print(out)
+    if retcode == 0:
+        specs = out.split("\t")
+        print((
+            f"[green]INFO[/green] for {compute_name} size: {specs[2]}: "
+            f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
+    else:
+        print(f"[red]{out}[/red]")
+    exit(retcode)
