@@ -2,6 +2,7 @@
 
 import json
 import pandas as pd
+import platform
 import shlex
 import subprocess
 
@@ -542,16 +543,16 @@ def launch_vscode(ez: Ez, dir):
     # current WSL 2 directory from within WSL 2 The current WSL 2 distribution
     # is stored in the environment variable WSL_DISTRO_NAME
 
-    dir_path = path.expanduser(dir).replace('/', '\\')
-    wsl_distro_name = environ["WSL_DISTRO_NAME"]    
-    wsl_path = f"\\\\wsl$\\{wsl_distro_name}{dir_path}"
-    ez.debug_print(f"PATH: {wsl_path}")
+    # dir_path = path.expanduser(dir).replace('/', '\\')
+    # wsl_distro_name = environ["WSL_DISTRO_NAME"]    
+    # wsl_path = f"\\\\wsl$\\{wsl_distro_name}{dir_path}"
+    # ez.debug_print(f"PATH: {wsl_path}")
 
-    hex_dir_path = wsl_path.encode("utf-8").hex()
     vscode_cmd = "code-insiders" if ez.insiders else "code"
     # TODO: figure out a way to determine when Jupyter is started in the pod
     # because VS Code doesn't do a good job at retrying connection
     # TODO: this isn't working on remote containers right now
+    # hex_dir_path = wsl_path.encode("utf-8").hex()
     # cmdline = (
     #     f"{vscode_cmd} --folder-uri "
     #     f"vscode-remote://dev-container+{hex_dir_path}/"
