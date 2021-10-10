@@ -4,7 +4,6 @@ import json
 import pandas as pd
 import shlex
 import subprocess
-import sys
 
 from getpass import getuser
 
@@ -13,6 +12,7 @@ from ez_state import Ez
 from io import StringIO
 from os import path, system, environ
 from os import makedirs, path, system
+from rich import print
 from rich.prompt import IntPrompt
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from shutil import rmtree
@@ -34,7 +34,6 @@ def login(ez: Ez):
 
 def exec_command(ez: Ez, 
                  command: str, 
-                 debug: bool=False,
                  log: bool=False, 
                  description: str="", 
                  input_file_path: str=None,
@@ -43,11 +42,15 @@ def exec_command(ez: Ez,
     """Shell execute command and optionally log output incrementally."""
     login(ez)
     command_array = shlex.split(command)
-    if debug:
-        print(command_array)
+    is_ssh = command_array[0].lower() == "ssh"
     if input_file_path is not None:
         with open(input_file_path, "rt") as f:
             stdin = f.read()
+
+    if ez.debug:
+        print(f"[green]EXEC:[/green] {command}")
+        if stdin is not None:
+            print(f"[green]..stdin[/green]\n{stdin}")
 
     p = subprocess.Popen(command_array, 
                          cwd=cwd,
@@ -79,6 +82,17 @@ def exec_command(ez: Ez,
 
         progress.console.bell()
         progress.update(t, description=f"Completed {description}")
+        if is_ssh and p.returncode == 255:
+            stderr = (p.stderr.read().decode('utf-8'))
+            print(f"\n[red]ERROR:[/red] ({p.returncode}) {stderr}")
+            print(f"..during execution of: {command}")
+            exit(p.returncode)
+        elif not is_ssh and p.returncode != 0:
+            stderr = (p.stderr.read().decode('utf-8'))
+            print(f"\n[red]ERROR:[/red] ({p.returncode}) {stderr}")
+            print(f"..during execution of: {command}")
+            exit(p.returncode)
+        
         return (p.returncode, "\n".join(output))
     
 def exec_script_using_ssh(ez: Ez, 

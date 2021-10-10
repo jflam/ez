@@ -1,6 +1,6 @@
 # env commands
 
-import click, json, os, random, subprocess, uuid
+import click, glob, json, os, random, shutil, subprocess, uuid
 
 from azutil import build_container_image, exec_command, launch_vscode, pick_vm
 from azutil import generate_vscode_project, is_gpu, jit_activate_vm
@@ -309,7 +309,6 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
               f"in resource group {ez.resource_group}")
         compute_name = pick_vm(ez.resource_group)
     elif not compute_name:
-        # TODO: special case for local "."
         # Use the current compute_name or prompt if none defined
         if not ez.active_remote_compute:
             print("Select which VM to use from this list of VMs provisioned "
@@ -333,7 +332,6 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     # Clone the repository locally to a subdirectory of the directory where
     # the command is run from.
     local_env_path = f"{getcwd()}/{env_name}"
-
     if path.exists(local_env_path):
         description = f"[green]UPDATING[/green] {git_uri} in {local_env_path}"
         exec_command(ez, 
@@ -351,7 +349,6 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     # needs to be read per project and contains some additional information:
     # - requires_gpu: True/False 
     # - base_container_image: name of the base container image
-
     env_json_path = f"{local_env_path}/ez.json"
     if path.exists(env_json_path):
         with open(env_json_path, "r") as f:
@@ -362,60 +359,58 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
         # TODO: generate
         exit(1)
 
-    # Check to see if the remote compute has the GPU capability if needed and
-    # fail if it doesn't.
+    if compute_name != ".":
+        # Check to see if the remote compute has the GPU capability if needed
+        # and fail if it doesn't.
 
-    # Start the remote compute if necessary. Wait for it to complete starting
+        # TODO: Start the remote compute if necessary. Wait for it to complete
+        # starting
+        remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
 
-    # Determine if the target compute is local or remote. If local, we will
-    # need to clone the GH repo locally, if remote, we will need to use SSH
-    # tunneling to clone the repo onto the VM in a pre-configured location.
+        # In the remote case, it needs to conditionally clone the git repo onto
+        # the remote VM. If the repo was already cloned on the VM, then we need
+        # to cd into the dir and git pull that repo. Otherwise just do the clone.
 
-    # In the remote case, it needs to conditionally clone the git repo onto
-    # the remote VM. If the repo was already cloned on the VM, then we need
-    # to cd into the dir and git pull that repo. Otherwise just do the clone.
-    remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
+        # TODO: this is better sent as a bash script to the server
+        remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && cd {remote_env_path} "
+                        f"&& git pull")
+        remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
+                            f"git clone {git_uri} {remote_env_path}")
+        ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}."
+                        f"cloudapp.azure.com")
+        remote_ssh_cmd = (
+            f"ssh -o StrictHostKeyChecking=no "
+            f"-i {ez.private_key_path} {ssh_connection} {remote_pull_cmd}"
+        )
+        description = (f"[green]CLONE/UPDATE[/green] {git_uri} on {compute_name} "
+                    f"at {remote_env_path}")
+        exec_command(ez, remote_ssh_cmd, description=description)
+        remote_ssh_cmd = (
+            f"ssh -o StrictHostKeyChecking=no "
+            f"-i {ez.private_key_path} {ssh_connection} {remote_clone_cmd}"
+        )
+        exec_command(ez, remote_ssh_cmd, description=description)
 
-    # TODO: this is better sent as a bash script to the server
-    remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && cd {remote_env_path} "
-                       f"&& git pull")
-    remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
-                        f"git clone {git_uri} {remote_env_path}")
-    ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}."
-                      f"cloudapp.azure.com")
-    remote_ssh_cmd = (
-        f"ssh -o StrictHostKeyChecking=no "
-        f"-i {ez.private_key_path} {ssh_connection} {remote_pull_cmd}"
-    )
-    description = (f"[green]CLONE/UPDATE[/green] {git_uri} on {compute_name} "
-                   f"at {remote_env_path}")
-    exec_command(ez, remote_ssh_cmd, description=description)
-    remote_ssh_cmd = (
-        f"ssh -o StrictHostKeyChecking=no "
-        f"-i {ez.private_key_path} {ssh_connection} {remote_clone_cmd}"
-    )
-    exec_command(ez, remote_ssh_cmd, description=description)
+        # The .vscode directory contains a dynamically generated settings.json
+        # file which points to the VM that the remote container will run on.
 
-    # The .vscode directory contains a dynamically generated settings.json
-    # file which points to the VM that the remote container will run on.
+        # If it is a remote launch, we will need to generate the information
+        # needed for the local devcontainer.json file, as well as for the
+        # settings.json file that contains the .vscode/settings.json file that
+        # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
 
-    # If it is a remote launch, we will need to generate the information
-    # needed for the local devcontainer.json file, as well as for the
-    # settings.json file that contains the .vscode/settings.json file that
-    # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
-
-    print(f"[green]GENERATING[/green] .vscode/settings.json")
-    settings_json = f"""
+        print(f"[green]GENERATING[/green] .vscode/settings.json")
+        settings_json = f"""
 {{
     "docker.host": "ssh://{ssh_connection}",
 }}
 """
-    vscode_dir = f"{local_env_path}/.vscode"
-    settings_json_path = f"{vscode_dir}/settings.json"
-    if not os.path.exists(vscode_dir):
-        os.mkdir(vscode_dir)
-    with open(settings_json_path, "wt+", encoding="utf-8") as f:
-        f.write(settings_json)
+        vscode_dir = f"{local_env_path}/.vscode"
+        settings_json_path = f"{vscode_dir}/settings.json"
+        if not os.path.exists(vscode_dir):
+            os.mkdir(vscode_dir)
+        with open(settings_json_path, "wt+", encoding="utf-8") as f:
+            f.write(settings_json)
 
     # Generate the devcontainer.json file. Much of this will eventually be
     # parameterized
@@ -453,7 +448,6 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
 
     # Using tokens for this and the compute must be configured to use it
     # by logging in automatically into Docker when you ask it to.
-
     if use_acr:
         if ez.registry_name is None:
             print(f"[red]ERROR:[/red] resource group {ez.resource_group} "
@@ -505,11 +499,10 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     # clone the project locally as well.
 
     # Copy files from the /build directory into the .devcontainer directory
-    cmd = "cp ../build/* ."
-    exec_command(ez, 
-        cmd, 
-        cwd=devcontainer_dir, 
-        description="[green]COPYING[/green] /build files to /.devcontainer")
+    print("[green]COPYING[/green] /build files to /.devcontainer")
+    build_files = glob.glob(f"{local_env_path}/build/*")
+    for file in build_files:
+        shutil.copy(file, devcontainer_dir)
 
     # Only generate a default Dockerfile if the user doesn't supply one in
     # their /build directory

@@ -63,9 +63,7 @@ def check_dependencies(force = False) -> bool:
 def ez(ctx, debug, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
     environments. To get started run ez init!"""
-    # TODO: restore this once jit support is back
-    # ctx.obj = Ez(debug, insiders, disable_jit)
-    ctx.obj = Ez(debug, insiders, True)
+    ctx.obj = Ez(debug=debug, insiders=insiders, disable_jit=disable_jit)
     if not check_dependencies(dependencies):
         exit(1)
     def _save_context():
