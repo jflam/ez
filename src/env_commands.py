@@ -283,9 +283,6 @@ def up(ez: Ez, compute_name, env_name):
     launch_vscode(ez, path_to_vscode_project)
     exit(0)
 
-# def exec_subprocess(cmd: str, dir = None) -> None:
-#     subprocess.run(cmd.split(' '), cwd=dir)
-
 @click.command()
 @click.option("--git-uri", "-g", required=True, 
               help="URI of git repo to load in the environment")
