@@ -458,6 +458,15 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     "dockerFile": "./Dockerfile",
 """
 
+    requires_gpu = ez_json["requires_gpu"]
+    if requires_gpu:
+        runargs = """
+        "--gpus=all",
+        "--ipc=host",
+"""
+    else:
+        runargs = ""
+
     devcontainer_json = f"""
 {{
     {docker_source}
@@ -469,8 +478,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
         "ms-python.vscode-pylance"
     ],
     "runArgs": [
-        "--gpus=all",
-        "--ipc=host",
+        {runargs}
     ],
 }}
 """
@@ -499,7 +507,8 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
     print("[green]COPYING[/green] /build files to /.devcontainer")
     build_files = glob.glob(f"{local_env_path}/build/*")
     for file in build_files:
-        shutil.copy(file, devcontainer_dir)
+        if os.path.isfile(file):
+            shutil.copy(file, devcontainer_dir)
 
     # Only generate a default Dockerfile if the user doesn't supply one in
     # their /build directory
