@@ -199,7 +199,7 @@ def stop(ez: Ez, compute_name):
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of VM to ssh into")
+@click.option("--compute-name", "-c", help="Name of VM to ssh into")
 @click.pass_obj
 def ssh(ez: Ez, compute_name):
     """SSH to a virtual machine"""
