@@ -89,6 +89,9 @@ def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
 def run(ez: Ez, env_name, git_uri, user_interface, compute_name, git_clone, 
         force_generate):
     """Create and run an environment"""
+    print("DEPRECATED. Use ez env go instead")
+    exit(0)
+
     compute_name = get_active_compute_name(ez, compute_name)
 
     # Initialize context
