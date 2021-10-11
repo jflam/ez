@@ -8,6 +8,7 @@ setup(
                 'env_commands', 
                 'compute_commands', 
                 'constants',
+                'ez_state',
                 'azutil'],
     install_requires=['Click', 'rich'],
     entry_points='''
