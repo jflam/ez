@@ -11,6 +11,8 @@ setup(
                 'ez_state',
                 'azutil'],
     install_requires=['Click', 'rich', 'fabric'],
+    data_files=[('scripts', ['scripts/provision-cpu', 
+                             'scripts/provision-gpu'])],
     entry_points='''
         [console_scripts]
         ez=ez:ez
