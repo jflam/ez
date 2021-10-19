@@ -96,19 +96,34 @@ def exec_command(ez: Ez,
     
 # Use fabric to exec script
 def exec_script_using_ssh(ez: Ez, 
-                          script_path: str, 
                           compute_name :str, 
+                          script_path: str=None, 
+                          script_text: str=None,
                           description: str="",
                           line_by_line: bool=False,
                           reboot: bool=False):
     """Execute script_name on compute_name using the fabric ssh library.
     script_path must be an absolute path."""
 
-    host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
-    c = Connection(host_uri, user=ez.user_name)
+    if script_path is None and script_text is None:
+        print("[red]ERROR[/red] must pass either script_path or script_text")
+        exit(1)
+    elif script_path is not None and script_text is not None:
+        print("[red]ERROR[/red] cannot pass both script_path and script_text")
+        exit(1)
 
-    with open(script_path, "rt") as f:
-        lines = f.readlines()
+    host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+    c = Connection(host_uri, 
+        user=ez.user_name, 
+        connect_kwargs={
+            "key_filename": ez.private_key_path,
+        })
+
+    if script_path is not None:
+        with open(script_path, "rt") as f:
+            lines = f.readlines()
+    else:
+        lines = script_text.split("\n")
 
     console = Console(height=20, force_interactive=True)
     with Progress(

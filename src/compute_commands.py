@@ -152,39 +152,34 @@ def enable_acr(ez: Ez, compute_name: str):
     # e.g., jflamregistry.azurecr.io/ezws:pytorch_tutorials
     repository_name = ez.workspace_name
 
-    # Note that az acr token create will recreate token if exists already
+    # az acr token create will recreate token if exists already
+    # the system-generated _repositories_push scope-map implies pull
     cmd = (f"az acr token create --name {compute_name} "
            f"--registry {ez.registry_name} "
-           f"--repository {repository_name} content/write content/read "
+           f"--scope-map _repositories_push "
            f"--output json")
     fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
     result = exec_command(ez, 
                 cmd, 
-                log=True, 
                 description=f"[green]GENERATING[/green] {fq_repo_name} token")
 
     # Get and save the JSON (for now so we don't need to create over and over)
-    print(f"return code {result[0]}")
     output = result[1]
-    print(output)
     j = json.loads(output)
     token_name = j["name"]
     password1 = j["credentials"]["passwords"][0]["value"]
     password2 = j["credentials"]["passwords"][1]["value"]
-    print(password1)
-    print(password2)
 
     # Generate the .bashrc that needs to existing on the server to assign
     # the token on each startup
     bashrc = f"""
-docker login -u {token_name} -p {password1} {ez.registry_name}.azurecr.io
+echo "docker login -u {token_name} -p {password1} {ez.registry_name}.azurecr.io" >> ~/.bashrc
 """
-    print(bashrc)
-
-    # Check if the remote machine has a .bashrc and if it does, append
-    # the bashrc script to that file
-    # docker login -u MyToken -p pGTRFTc=thU7gu0PcnNoC8Dl8nzf1x9P jflamregistry.azurecr.io
-
+    # Append the docker login command to the ~/.bashrc on compute_name
+    result = exec_script_using_ssh(ez, 
+        script_text=bashrc, 
+        compute_name=compute_name,
+        description=f"[green]UPDATING[/green] ~/.bashrc on {compute_name}")
     exit(0)
 
 @click.command()
