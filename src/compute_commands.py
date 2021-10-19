@@ -1,13 +1,13 @@
 # Compute commands
 
 import click
-import shlex
+import json
 import subprocess
 from os import path, system
 
 from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
-from azutil import get_active_compute_name, get_compute_size
+from azutil import get_active_compute_name
 from ez_state import Ez
 from rich import print
 
@@ -24,9 +24,11 @@ from rich import print
 @click.option("--check-dns", "-c", is_flag=True, 
               help=("Check if DNS name is available for "
               "--compute-name in region"))
+@click.option("--no-install", "-q", is_flag=True, default=False,
+              help=("Do not install system software"))
 @click.pass_obj
 def create(ez: Ez, compute_name, compute_size, compute_type, image, 
-           check_dns):
+           check_dns, no_install):
     """Create a compute node"""
 
     # User can pass in nothing for --compute-size and we will helpfully list
@@ -78,6 +80,9 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
             print(out)
             exit(1)
         
+        if no_install:
+            exit(0)
+
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
@@ -95,7 +100,8 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # Now enable ssh on the remote machine
         # 1. generate key using ssh-keygen on remote machine
         # 2. copy public key back to this machine
-        # 3. copy public key onto clipboard and open github and have instructions on how to define it
+        # 3. copy public key onto clipboard and open github and have
+        #    instructions on how to define it
 
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
@@ -128,10 +134,58 @@ def update_system(ez: Ez, compute_name, compute_size):
         ez, 
         provision_vm_script_path, 
         compute_name, 
-        description=description)
+        description=description,
+        line_by_line=True)
     # Update current remote compute state
     ez.active_remote_compute = compute_name 
     ez.active_remote_compute_type = "vm"
+
+@click.option("--compute-name", "-c", required=True, 
+              help="Name of compute to update")
+@click.command()
+@click.pass_obj
+def enable_acr(ez: Ez, compute_name: str):
+    """Enable ACR on compute_name"""
+
+    # Repository name maps to workspace name
+    # Environment name maps to tag
+    # e.g., jflamregistry.azurecr.io/ezws:pytorch_tutorials
+    repository_name = ez.workspace_name
+
+    # Note that az acr token create will recreate token if exists already
+    cmd = (f"az acr token create --name {compute_name} "
+           f"--registry {ez.registry_name} "
+           f"--repository {repository_name} content/write content/read "
+           f"--output json")
+    fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
+    result = exec_command(ez, 
+                cmd, 
+                log=True, 
+                description=f"[green]GENERATING[/green] {fq_repo_name} token")
+
+    # Get and save the JSON (for now so we don't need to create over and over)
+    print(f"return code {result[0]}")
+    output = result[1]
+    print(output)
+    j = json.loads(output)
+    token_name = j["name"]
+    password1 = j["credentials"]["passwords"][0]["value"]
+    password2 = j["credentials"]["passwords"][1]["value"]
+    print(password1)
+    print(password2)
+
+    # Generate the .bashrc that needs to existing on the server to assign
+    # the token on each startup
+    bashrc = f"""
+docker login -u {token_name} -p {password1} {ez.registry_name}.azurecr.io
+"""
+    print(bashrc)
+
+    # Check if the remote machine has a .bashrc and if it does, append
+    # the bashrc script to that file
+    # docker login -u MyToken -p pGTRFTc=thU7gu0PcnNoC8Dl8nzf1x9P jflamregistry.azurecr.io
+
+    exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to delete")

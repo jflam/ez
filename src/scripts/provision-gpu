@@ -1,75 +1,53 @@
 #!/usr/bin/env bash
 
 # Script to provision a GPU machine
-# This script will be copied to an Azure GPU VM via scp and executed via ssh
+#
+# Note that any bash variables set by this script need to be used from the 
+# same logical line, i.e., they need to be concatenated using the && operator
 
-set -o nounset   # fail on uninitialized variable references
-
-# These next two options should likely be turned on only in debug mode
-
-set -o errexit   # exit on error on commands -- probably should do this only in debug mode
-set -o pipefail  # exit status of last command that threw non-zero exit code is returned
-
-## Upgrade existing installation to latest
+## UPDATE system software
 sudo apt update
 sudo apt upgrade -y
 
-## Install build pre-requisites
+## INSTALL build-essential
 sudo apt update
 sudo apt install build-essential -y
 
-## Install Docker 
-# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-curl https://get.docker.com | sh \
-  && sudo systemctl --now enable docker
-
-## Install nvidia drivers
-# https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html
-
-# Install linux headers for this distribution
-sudo apt-get install linux-headers-$(uname -r)
+## INSTALL cuda-drivers
+# https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
 
 # Ensure packages from CUDA repo have precedence over Canonical repo
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
-wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-$distribution.pin
-sudo mv cuda-$distribution.pin /etc/apt/preferences.d/cuda-repository-pin-600
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g') \
+  && wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-$distribution.pin \
+  && sudo mv cuda-$distribution.pin /etc/apt/preferences.d/cuda-repository-pin-600 \
+  && sudo apt-key adv --fetch-keys \
+     https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/7fa2af80.pub \
+  && echo "deb http://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64 /" | \
+     sudo tee /etc/apt/sources.list.d/cuda.list
 
-# Install CUDA GPG key
-sudo apt-key adv --fetch-keys \
-  https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/7fa2af80.pub
+sudo apt update
+sudo apt install -y cuda-drivers
 
-# Add reference to CUDA network repository
-echo "deb http://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64 /" \
-  | sudo tee /etc/apt/sources.list.d/cuda.list
-
-# Install drivers
-sudo apt-get update
-sudo apt-get -y install cuda-drivers
-
-# Update environment variables
-# https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#post-installation-actions
-export PATH=/usr/local/cuda-11.4/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-11.4/lib64\
-  ${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-
-## Install nvidia-docker2 
+# Install Docker with CUDA support
 # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 
+## INSTALL Docker
+curl https://get.docker.com | sh && sudo systemctl --now enable docker
+
+## INSTALL nvidia-docker2
 # Update repository links
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
    && curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - \
-   && curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+   && curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list \
+   && curl -s -L https://nvidia.github.io/nvidia-container-runtime/experimental/$distribution/nvidia-container-runtime.list | sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
 
-curl -s -L https://nvidia.github.io/nvidia-container-runtime/experimental/$distribution/nvidia-container-runtime.list | sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
-
-sudo apt-get update
+sudo apt update
 sudo apt install -y nvidia-docker2
-sudo systemctl restart docker
 
+## CONFIGURE Docker to run without sudo
 ## Setup Docker to run without needing sudo
 # https://docs.docker.com/engine/install/linux-postinstall/
 sudo usermod -aG docker $USER
 
-# This is required to run docker successfully post-install, I think
-# Run this to verify: sudo docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
-sudo reboot
+# Note that this script requires a reboot of the machine before the 
+# installation can be considered to be successful.

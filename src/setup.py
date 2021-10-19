@@ -10,7 +10,7 @@ setup(
                 'constants',
                 'ez_state',
                 'azutil'],
-    install_requires=['Click', 'rich'],
+    install_requires=['Click', 'rich', 'fabric'],
     entry_points='''
         [console_scripts]
         ez=ez:ez

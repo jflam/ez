@@ -533,14 +533,29 @@ RUN pip install -v -r requirements.txt
     #
     # az acr build --registry jflamregistry --image wine . 
     if use_acr:
-        cmd = (f"az acr build --registry {ez.registry_name} "
-               f"--image {env_name} .")
-        exec_command(ez, 
+        # TODO: only build if it isn't in the registry already
+        # probably need a --force-build switch to force this happening too
+        full_registry_name = f"{ez.registry_name}.azurecr.io/{env_name}"
+        cmd = f"docker images {full_registry_name}"
+        result = exec_command(ez, 
             cmd, 
-            cwd=f"{local_env_path}/build",
-            log=True,
-            description=("[green]BUILDING[/green] container image using "
-                         "ACR Tasks"))
+            log=True, 
+            description=(f"[green]CHECKING[/green] if "
+                         f"{full_registry_name} exists"))
+        if result[0] != 0:
+            exit(1)
+        if result[1].find(full_registry_name):
+            print(f"[green]SKIPPING[/green] build. {full_registry_name} "
+                  f"exists already")
+        else:
+            cmd = (f"az acr build --registry {ez.registry_name} "
+                f"--image {env_name} .")
+            exec_command(ez, 
+                cmd, 
+                cwd=f"{local_env_path}/build",
+                log=True,
+                description=("[green]BUILDING[/green] container image using "
+                            "ACR Tasks"))
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of

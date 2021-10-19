@@ -2,18 +2,16 @@
 
 import json
 import pandas as pd
-import platform
 import shlex
 import subprocess
 
 from getpass import getuser
-
-from rich.console import Console
 from ez_state import Ez
+from fabric import Connection
 from io import StringIO
-from os import path, system, environ
-from os import makedirs, path, system
+from os import path, system, makedirs, path, system
 from rich import print
+from rich.console import Console
 from rich.prompt import IntPrompt
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from shutil import rmtree
@@ -74,7 +72,7 @@ def exec_command(ez: Ez,
         output = []
         while True:
             retcode = p.poll()
-            line = p.stdout.readline().decode("utf-8").strip()
+            line = p.stdout.readline().decode("utf-8").rstrip()
             output.append(line)
             if log:
                 progress.console.log(line)
@@ -82,7 +80,7 @@ def exec_command(ez: Ez,
                 break
 
         progress.console.bell()
-        progress.update(t, description=f"Completed {description}")
+        progress.update(t, description=f"Completed ({retcode}) {description}")
         if is_ssh and p.returncode == 255:
             stderr = (p.stderr.read().decode('utf-8'))
             print(f"\n[red]ERROR:[/red] ({p.returncode}) {stderr}")
@@ -96,27 +94,76 @@ def exec_command(ez: Ez,
         
         return (p.returncode, "\n".join(output))
     
+# Use fabric to exec script
 def exec_script_using_ssh(ez: Ez, 
                           script_path: str, 
                           compute_name :str, 
-                          description: str=""):
-    """Execute script_name on vm_name.
+                          description: str="",
+                          line_by_line: bool=False,
+                          reboot: bool=False):
+    """Execute script_name on compute_name using the fabric ssh library.
     script_path must be an absolute path."""
-    if compute_name is None:
-        compute_name = ez.active_remote_compute
 
-    jit_activate_vm(ez, compute_name)
-    ssh_cmd = (
-        f"ssh -tt -o StrictHostKeyChecking=no "
-        f"-i {ez.private_key_path} "
-        f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
-    )
-    retval, output = exec_command(ez, 
-                                  ssh_cmd, 
-                                  log=True, 
-                                  description=description, 
-                                  input_file_path=script_path)
-    return (retval, output)
+    host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+    c = Connection(host_uri, user=ez.user_name)
+
+    with open(script_path, "rt") as f:
+        lines = f.readlines()
+
+    console = Console(height=20, force_interactive=True)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        t0 = progress.add_task(description)
+        task_name = ""
+        if line_by_line:
+            # Process line by line and 
+            i = 0
+            while i < len(lines):
+                current_line = lines[i].strip()
+                if current_line == "":
+                    i += 1
+                    continue
+                if current_line.startswith("##"):
+                    if task_name != "":
+                        completed = (f"[green]TASK COMPLETED[/green] "
+                                     f"{task_name}")
+                        progress.update(t, description=completed, 
+                                        completed=100)
+                    i += 1
+                    task_name = current_line[2:].strip()
+                    t = progress.add_task(f"[green]TASK:[/green] {task_name}")
+                    continue
+                if current_line.startswith("#"):
+                    i += 1
+                    continue
+                if current_line.endswith("\\"):
+                    while i < len(lines):
+                        i += 1
+                        block_line = lines[i].strip()
+                        current_line += f"\n  {block_line}"
+                        if not block_line.endswith("\\"):
+                            break
+                console.log(f"[green]{task_name}:[/green] {current_line}")
+                c.run(current_line)
+                i += 1
+
+            progress.console.bell()
+
+            # Complete - reboot if needed
+            if reboot:
+                c.run("sudo reboot", warn=True)
+            completed = f"[green]COMPLETED[/green] {description}"
+            progress.update(t0, description=completed)
+            return (0, "")
+        else:
+            # Run everything as a single block
+            single_block = "\n".join(lines)
+            result = c.run(single_block)
+            return (result.exited, result.stdout)
 
 def exec_command_return_dataframe(cmd):
     # TODO: delegate to exec_command
