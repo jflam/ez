@@ -10,7 +10,7 @@ setup(
                 'constants',
                 'ez_state',
                 'azutil'],
-    install_requires=['Click', 'rich', 'fabric'],
+    install_requires=['Click', 'rich', 'fabric', 'pandas'],
     data_files=[('scripts', ['scripts/provision-cpu', 
                              'scripts/provision-gpu'])],
     entry_points='''
