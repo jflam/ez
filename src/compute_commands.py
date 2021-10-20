@@ -159,22 +159,27 @@ def enable_acr(ez: Ez, compute_name: str):
            f"--scope-map _repositories_push "
            f"--output json")
     fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
-    result = exec_command(ez, 
-                cmd, 
-                description=f"[green]GENERATING[/green] {fq_repo_name} token")
+    retval, output = exec_command(ez, 
+        cmd, 
+        description=f"[green]GENERATING[/green] {fq_repo_name} token")
 
-    # Get and save the JSON (for now so we don't need to create over and over)
-    output = result[1]
+    if retval != 0:
+        print(output)
+        exit(retval)
+
     j = json.loads(output)
     token_name = j["name"]
+
+    # Retrieve the generated passwords and use them for the token
     password1 = j["credentials"]["passwords"][0]["value"]
     password2 = j["credentials"]["passwords"][1]["value"]
 
-    # Generate the .bashrc that needs to existing on the server to assign
-    # the token on each startup
-    bashrc = f"""
-echo "docker login -u {token_name} -p {password1} {ez.registry_name}.azurecr.io" >> ~/.bashrc
-"""
+    # Generate the .bashrc that needs to existing on the server to assign the
+    # token on each startup. TODO: need a better story for generating and
+    # assigning the password in the future.
+    bashrc = (f"echo \"docker login -u {token_name} -p {password1} "
+              f"{ez.registry_name}.azurecr.io\" >> ~/.bashrc")
+
     # Append the docker login command to the ~/.bashrc on compute_name
     result = exec_script_using_ssh(ez, 
         script_text=bashrc, 
