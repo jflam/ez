@@ -116,7 +116,7 @@ def exec_script_using_ssh(ez: Ez,
     c = Connection(host_uri, 
         user=ez.user_name, 
         connect_kwargs={
-            "key_filename": ez.private_key_path,
+            "key_filename": [ez.private_key_path],
         })
 
     if script_path is not None:
