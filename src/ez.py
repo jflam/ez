@@ -273,22 +273,6 @@ def init(ez: Ez):
     ez.active_remote_compute_type = ""
     ez.active_remote_env = ""
     
-    # # Write the configuration file
-    # ez_config = {
-    #     "workspace_name": workspace_name,
-    #     "resource_group": workspace_resource_group,
-    #     "registry_name": registry_name,
-    #     "subscription": subscription_id,
-    #     "region": workspace_region,
-    #     "private_key_path": keyfile_path,
-    #     "user_name": user_name,
-
-    #     # Define fields
-    #     "active_compute": "",
-    #     "active_compute_type": "",
-    #     "active_env": ""
-    # }
-
     ez_config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
     if os.path.isfile(ez_config_path):
         choice = Prompt.ask(f"{ez_config_path} exists. Overwrite?", 
@@ -297,9 +281,6 @@ def init(ez: Ez):
             os.remove(ez_config_path)
         else:
             exit(0)
-
-    # with open(ez_config_path, "w") as f:
-    #     json.dump(ez_config, f, indent=4)
 
     print(f"""
 ez is now configured, configuration file written to {ez_config_path}.
