@@ -654,7 +654,6 @@ def install_local_dependencies():
     # install brew
     # install wget
     # install python/conda
-    # install jupyter-repo2docker
     # install docker
     # install ruamel.yaml (via conda!)
 

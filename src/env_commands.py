@@ -27,6 +27,8 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
                                                      ".", has_gpu, 
                                                      force_generate, True)
 
+    print("[red]ERROR[/red] k8s support needs reimplementation")
+    exit(1)
     # ASSUME if path_to_vscode_project exists that image built alredy
     if not path.exists(path_to_vscode_project):
         build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "

@@ -49,9 +49,3 @@ newgrp miniconda-users
 # Initialize conda
 eval "$(/opt/miniconda/bin/conda shell.bash hook)"
 conda init 
-
-# Install jupyter-repo2docker
-pip install jupyter-repo2docker
-
-# Not sure why this is needed but missing dependency in jupyter-repo2docker somehow?
-pip install ruamel.yaml
