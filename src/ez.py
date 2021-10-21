@@ -46,6 +46,10 @@ def check_dependencies(force = False) -> bool:
         "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
         ), force):
         return False
+    if not check_installed("gh",
+        ("Cannot find the GitHub CLI (gh), which is needed for interactions "
+         "with GitHub. https://cli.github.com/manual/installation"), force):
+        return False
     return True
 
 @click.group()
