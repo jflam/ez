@@ -367,6 +367,7 @@ compute.add_command(compute_commands.info)
 compute.add_command(compute_commands.ssh)
 compute.add_command(compute_commands.update_system)
 compute.add_command(compute_commands.enable_acr)
+compute.add_command(compute_commands.enable_github)
 
 # environment sub-commands
 

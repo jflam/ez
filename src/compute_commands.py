@@ -5,7 +5,7 @@ import json
 import subprocess
 from os import path, system
 
-from azutil import enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
+from azutil import copy_to_clipboard, enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
 from azutil import exec_command, jit_activate_vm, get_vm_size
 from azutil import get_active_compute_name
 from ez_state import Ez
@@ -186,6 +186,65 @@ def enable_acr(ez: Ez, compute_name: str):
         compute_name=compute_name,
         description=f"[green]UPDATING[/green] ~/.bashrc on {compute_name}")
     exit(0)
+
+@click.option("--compute-name", "-c", required=True, 
+              help="Name of compute to update")
+@click.option("--email-address", "-e", required=True, 
+              help="Email address used for GitHub")
+@click.option("--manual", "-m", is_flag=True, default=False,
+              help=("Manual install: won't use GitHub CLI"))
+@click.command()
+@click.pass_obj
+def enable_github(ez: Ez, 
+    compute_name: str, 
+    email_address: str, 
+    manual: bool):
+    """Enable github on compute_name"""
+
+    # Generate a new public/private key pair on compute_name
+    # TODO: parameterize email_address into ez init and store in ez.json
+    # TODO: fix the terrible echo hack
+    cmd = (f"echo -e 'y\n' | ssh-keygen -t ed25519 -C {email_address} "
+           f"-N '' -f ~/.ssh/id_rsa_github > /dev/null 2>&1")
+    result = exec_script_using_ssh(ez,
+        script_text=cmd,
+        compute_name=compute_name,
+        description=(f"[green]GENERATING[/green] public/private "
+                     f"key pair on {compute_name}"))
+
+    # cat the public key
+    cmd = f"cat /home/{ez.user_name}/.ssh/id_rsa_github.pub"
+    result = exec_script_using_ssh(ez, 
+        compute_name=compute_name, 
+        script_text=cmd,
+        hide_output=True,
+        description="[green]READING[/green] generated public key")
+    if result[0] != 0:
+        print(f"[red]ERROR[/red]: {result[1]}")
+        exit(1)
+    public_key = result[1].strip()
+
+    if manual:
+        # Put it on the clipboard 
+        copy_to_clipboard(ez, public_key)
+
+        # Open https://github.com/settings/ssh/new
+        print("[green]COPIED[/green] public key to clipboard")
+        print("[green]OPEN[/green] https://github.com/settings/ssh/new in "
+            "your web browser and paste the contents of the public key into "
+            "the public key field and name your new SSH token to match this "
+            f"machine. Suggested name: {compute_name}-token")
+    else:
+        # write public key to tmp file
+        with open(f"/tmp/id_rsa_github.pub", "w") as f:
+            f.write(public_key)
+            
+        # pass tmp file to gh cli
+        cmd = (f"gh ssh-key add /tmp/id_rsa_github.pub "
+               f"--title \"{compute_name}-token\"")
+        exec_command(ez, 
+            cmd, 
+            description="[green]REGISTERING[/green] public key with GitHub")
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to delete")

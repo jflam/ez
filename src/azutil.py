@@ -2,6 +2,7 @@
 
 import json
 import pandas as pd
+import platform
 import shlex
 import subprocess
 
@@ -101,6 +102,7 @@ def exec_script_using_ssh(ez: Ez,
                           script_text: str=None,
                           description: str="",
                           line_by_line: bool=False,
+                          hide_output: bool=False,
                           reboot: bool=False):
     """Execute script_name on compute_name using the fabric ssh library.
     script_path must be an absolute path."""
@@ -133,6 +135,7 @@ def exec_script_using_ssh(ez: Ez,
         console=console,
     ) as progress:
         t0 = progress.add_task(description)
+        completed = f"[green]COMPLETED[/green] {description}"
         task_name = ""
         if line_by_line:
             # Process line by line and 
@@ -171,13 +174,16 @@ def exec_script_using_ssh(ez: Ez,
             # Complete - reboot if needed
             if reboot:
                 c.run("sudo reboot", warn=True)
-            completed = f"[green]COMPLETED[/green] {description}"
             progress.update(t0, description=completed)
             return (0, "")
         else:
             # Run everything as a single block
             single_block = "\n".join(lines)
-            result = c.run(single_block)
+            if hide_output:
+                result = c.run(single_block, hide='stdout')
+            else:
+                result = c.run(single_block)
+            progress.update(t0, description=completed)
             return (result.exited, result.stdout)
 
 def exec_command_return_dataframe(cmd):
@@ -186,6 +192,22 @@ def exec_command_return_dataframe(cmd):
     stdout = result.stdout.decode("utf-8")
     stream = StringIO(stdout)
     return pd.read_csv(stream, sep="\t", header=None)
+
+def copy_to_clipboard(ez:Ez, text: str):
+    """Platform independent copy text to clipboard function"""
+    if platform.system() == "Linux":
+        if platform.release().find("WSL") != -1:
+            clip = "clip.exe"
+        else:
+            print(f"Don't know what command to use for desktop linux")
+            exit(1)
+    elif platform.system() == "Darwin":
+        clip = "pbcopy"
+
+    cmd = f"echo \"{text}\" | {clip}"
+
+    # Need to execute in a sub-shell
+    system(cmd)
 
 def is_gpu(vm_size):
     """Return true if vm_size is an Azure VM with a GPU"""
