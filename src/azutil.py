@@ -103,7 +103,8 @@ def exec_script_using_ssh(ez: Ez,
                           description: str="",
                           line_by_line: bool=False,
                           hide_output: bool=False,
-                          reboot: bool=False):
+                          connect_timeout: int=120,
+                          reboot: bool=False) -> Tuple[int, str]:
     """Execute script_name on compute_name using the fabric ssh library.
     script_path must be an absolute path."""
 
@@ -117,6 +118,7 @@ def exec_script_using_ssh(ez: Ez,
     host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     c = Connection(host_uri, 
         user=ez.user_name, 
+        connect_timeout=connect_timeout,
         connect_kwargs={
             "key_filename": [ez.private_key_path],
         })
@@ -153,7 +155,8 @@ def exec_script_using_ssh(ez: Ez,
                                         completed=100)
                     i += 1
                     task_name = current_line[2:].strip()
-                    t = progress.add_task(f"[green]TASK:[/green] {task_name}")
+                    t = progress.add_task(
+                            f"[green]TASK RUNNING:[/green] {task_name}")
                     continue
                 if current_line.startswith("#"):
                     i += 1

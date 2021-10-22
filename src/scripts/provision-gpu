@@ -45,7 +45,6 @@ sudo apt update
 sudo apt install -y nvidia-docker2
 
 ## CONFIGURE Docker to run without sudo
-## Setup Docker to run without needing sudo
 # https://docs.docker.com/engine/install/linux-postinstall/
 sudo usermod -aG docker $USER
 

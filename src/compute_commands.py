@@ -1,5 +1,6 @@
 # Compute commands
 
+from typing import Tuple
 import click
 import json
 import subprocess
@@ -9,6 +10,7 @@ from azutil import copy_to_clipboard, enable_jit_access_on_vm, is_gpu, exec_scri
 from azutil import exec_command, jit_activate_vm, get_vm_size
 from azutil import get_active_compute_name
 from ez_state import Ez
+from fabric import Connection
 from rich import print
 
 @click.command()
@@ -93,15 +95,24 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         )
         exec_script_using_ssh(
             ez, 
-            provision_vm_script_path, 
-            compute_name, 
+            script_path=provision_vm_script_path, 
+            compute_name=compute_name, 
+            line_by_line=True,
             description=description)
 
-        # Now enable ssh on the remote machine
-        # 1. generate key using ssh-keygen on remote machine
-        # 2. copy public key back to this machine
-        # 3. copy public key onto clipboard and open github and have
-        #    instructions on how to define it
+        __enable_acr(ez, compute_name)
+        __enable_github(ez, compute_name)
+
+        # Ask machine to reboot (need to swallow exception here)
+        try:
+            exec_script_using_ssh(
+                ez,
+                compute_name,
+                script_text="sudo reboot",
+                description=f"[green]REBOOTING[/green] {compute_name}"
+            )
+        except Exception:
+            pass
 
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
@@ -132,21 +143,16 @@ def update_system(ez: Ez, compute_name, compute_size):
     )
     exec_script_using_ssh(
         ez, 
-        provision_vm_script_path, 
-        compute_name, 
+        script_path=provision_vm_script_path, 
+        compute_name=compute_name, 
         description=description,
         line_by_line=True)
     # Update current remote compute state
     ez.active_remote_compute = compute_name 
     ez.active_remote_compute_type = "vm"
 
-@click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to update")
-@click.command()
-@click.pass_obj
-def enable_acr(ez: Ez, compute_name: str):
-    """Enable ACR on compute_name"""
-
+def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
+    """Internal function to enable ACR on compute_name"""
     # Repository name maps to workspace name
     # Environment name maps to tag
     # e.g., jflamregistry.azurecr.io/ezws:pytorch_tutorials
@@ -181,31 +187,30 @@ def enable_acr(ez: Ez, compute_name: str):
               f"{ez.registry_name}.azurecr.io\" >> ~/.bashrc")
 
     # Append the docker login command to the ~/.bashrc on compute_name
-    result = exec_script_using_ssh(ez, 
+    return exec_script_using_ssh(ez, 
         script_text=bashrc, 
         compute_name=compute_name,
         description=f"[green]UPDATING[/green] ~/.bashrc on {compute_name}")
-    exit(0)
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
-@click.option("--email-address", "-e", required=True, 
-              help="Email address used for GitHub")
-@click.option("--manual", "-m", is_flag=True, default=False,
-              help=("Manual install: won't use GitHub CLI"))
 @click.command()
 @click.pass_obj
-def enable_github(ez: Ez, 
-    compute_name: str, 
-    email_address: str, 
-    manual: bool):
-    """Enable github on compute_name"""
+def enable_acr(ez: Ez, compute_name: str):
+    """Enable ACR on compute_name"""
+    __enable_acr(ez, compute_name)
+    exit(0)
 
+def __enable_github(ez: Ez, 
+    compute_name: str, 
+    manual: bool=False):
+    """Internal function to enable github on compute_name"""
     # Generate a new public/private key pair on compute_name
-    # TODO: parameterize email_address into ez init and store in ez.json
     # TODO: fix the terrible echo hack
-    cmd = (f"echo -e 'y\n' | ssh-keygen -t ed25519 -C {email_address} "
-           f"-N '' -f ~/.ssh/id_rsa_github > /dev/null 2>&1")
+    comment = f"ez generated token for {compute_name}" 
+    cmd = (f"echo -e 'y\n' | ssh-keygen -t ed25519 -C \"{comment}\" "
+           f"-N '' -f /home/{ez.user_name}/.ssh/id_rsa_github "
+           f"> /dev/null 2>&1")
     result = exec_script_using_ssh(ez,
         script_text=cmd,
         compute_name=compute_name,
@@ -245,6 +250,19 @@ def enable_github(ez: Ez,
         exec_command(ez, 
             cmd, 
             description="[green]REGISTERING[/green] public key with GitHub")
+
+@click.option("--compute-name", "-c", required=True, 
+              help="Name of compute to update")
+@click.option("--manual", "-m", is_flag=True, default=False,
+              help=("Manual install: won't use GitHub CLI"))
+@click.command()
+@click.pass_obj
+def enable_github(ez: Ez, 
+    compute_name: str, 
+    manual: bool):
+    """Enable github on compute_name"""
+    __enable_github(ez, compute_name, manual)
+    exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to delete")
