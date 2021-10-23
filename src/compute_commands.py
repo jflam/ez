@@ -1,17 +1,17 @@
 # Compute commands
 
-from typing import Tuple
 import click
 import json
 import subprocess
-from os import path, system
 
-from azutil import copy_to_clipboard, enable_jit_access_on_vm, is_gpu, exec_script_using_ssh
-from azutil import exec_command, jit_activate_vm, get_vm_size
-from azutil import get_active_compute_name
+from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
+    exec_script_using_ssh, exec_command, jit_activate_vm, get_vm_size,
+    get_active_compute_name, printf, printf_err, format_output_string)
 from ez_state import Ez
 from fabric import Connection
+from os import path, system
 from rich import print
+from typing import Tuple
 
 @click.command()
 @click.option("--compute-name", "-n", required=True, 
@@ -47,9 +47,9 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
     if check_dns:
         compute_dns_name = f"{compute_name}.{ez.region}.cloudapp.azure.com"
         if system(f"nslookup {compute_dns_name} > /dev/null") == 0:
-            print((
-                f"The domain name {compute_dns_name} is already taken. "
-                f"Try a different --compute-name"))
+            printf((
+                f"Error: the domain name {compute_dns_name} is already "
+                f"taken. Try a different --compute-name"))
             exit(1)
 
     # Select provisioning scripts for the VM based on whether compute_size is
@@ -63,7 +63,7 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         os_disk_size = 256
 
         description = (
-            f"[green]CREATING[/green] virtual machine {compute_name} size "
+            f"creating virtual machine {compute_name} size "
             f"{compute_size} in resource group {ez.resource_group}...")
 
         cmd = (
@@ -167,7 +167,7 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
     fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
     retval, output = exec_command(ez, 
         cmd, 
-        description=f"[green]GENERATING[/green] {fq_repo_name} token")
+        description=f"generating {fq_repo_name} token")
 
     if retval != 0:
         print(output)
@@ -229,6 +229,23 @@ def __enable_github(ez: Ez,
         exit(1)
     public_key = result[1].strip()
 
+    # TODO: ensure that github RSA key is in the known-hosts file
+    gh_config = """
+Host github.com
+    HostName github.com
+    AddKeysToAgent yes
+    IdentityFile ~/.ssh/id_rsa_github
+"""
+    # Write locally
+    with open("/tmp/gh_config", "w") as f:
+        f.write(gh_config)
+
+    hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+    with Connection(hostname, user=ez.user_name) as c:
+        c.put("/tmp/gh_config", f"/home/{ez.user_name}/gh_config")
+        c.run(f"cat /home/{ez.user_name}/gh_config "
+              f">> /home/{ez.user_name}/.ssh/config")
+
     if manual:
         # Put it on the clipboard 
         copy_to_clipboard(ez, public_key)
@@ -249,7 +266,7 @@ def __enable_github(ez: Ez,
                f"--title \"{compute_name}-token\"")
         exec_command(ez, 
             cmd, 
-            description="[green]REGISTERING[/green] public key with GitHub")
+            description="registering public key with GitHub")
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -270,7 +287,7 @@ def enable_github(ez: Ez,
 def delete(ez: Ez, compute_name):
     """Delete a compute node"""
     compute_name = get_active_compute_name(ez, compute_name)
-    description = f"[green]DELETING[/green] compute node {compute_name}"
+    description = f"deleting compute node {compute_name}"
     exec_command(ez, (
         f"az vm delete --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"),
@@ -285,7 +302,7 @@ def ls(ez: Ez):
         f"az vm list -d --resource-group {ez.resource_group} "
         f"--query=\"[?powerState=='VM running'].[name]\" -o tsv"
     )
-    description = f"[green]QUERYING[/green] Azure..."
+    description = f"querying Azure"
     _, output = exec_command(ez, ls_cmd, description=description)
 
     # TODO cleanup output
@@ -298,7 +315,7 @@ def ls(ez: Ez):
             print(f"  {line}")
 
     print("RUNNING AKS clusters (* == current)")
-    print("TODO")
+    print("...TODO")
     exit(0)
 
 @click.command()
@@ -312,7 +329,7 @@ def start(ez: Ez, compute_name):
     exec_command(ez, 
                  (f"az vm start --name {compute_name} "
                   f"--resource-group {ez.resource_group}"),
-                 description=f"STARTING compute node {compute_name}")
+                 description=f"starting compute node {compute_name}")
     ez.active_remote_compute = compute_name
     exit(0)
 
@@ -326,7 +343,7 @@ def stop(ez: Ez, compute_name):
     exec_command(ez, 
                  (f"az vm deallocate --name {compute_name} "
                   f"--resource-group {ez.resource_group}"),
-                 description=f"STOPPING compute node {compute_name}")
+                 description=f"stopping compute node {compute_name}")
     exit(0)
 
 @click.command()
@@ -387,11 +404,10 @@ def info(ez: Ez, compute_name):
     # TODO: do this with AKS and the correct compute pool
 
     # Now use the vm_size to get hardware details 
-    description = f"[green]QUERYING[/green] {compute_name} for details..."
     retcode, out = exec_command(
         ez, 
         f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}",
-        description=description,
+        description=f"querying {compute_name} for details",
         debug=True)
     print(out)
     if retcode == 0:

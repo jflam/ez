@@ -21,6 +21,21 @@ from typing import Tuple
 
 # Execute commands, either locally or remotely
 
+def format_output_string(text: str, error: bool=False):
+    """Format output string to capitalize first word and colorize based on
+    whether it is an error or not"""
+    first, rest = text.split(' ', 1)
+    color = "red" if error else "green"
+    return f"[{color}]{first.upper()}[/{color}] {rest}"
+
+def printf_err(text:str):
+    """Print formatted error string"""
+    print(format_output_string(text, error=True))
+
+def printf(text:str):
+    """Print formatted output string"""
+    print(format_output_string(text, error=False))
+
 def login(ez: Ez):
     """Login using the interactive session user's credentials"""
     if not ez.logged_in:
@@ -29,7 +44,8 @@ def login(ez: Ez):
             if success == 0:
                 ez.logged_in = True
             else:
-                print("LOGIN error, ez terminating")
+                printf_err("error: could not log into Azure automatically. "
+                    "Please login using az login")
                 exit(1)
 
 def exec_command(ez: Ez, 
@@ -41,6 +57,7 @@ def exec_command(ez: Ez,
                  stdin: str=None) -> Tuple[int, str]:
     """Shell execute command and optionally log output incrementally."""
     login(ez)
+    description = format_output_string(description)
     command_array = shlex.split(command)
     is_ssh = command_array[0].lower() == "ssh"
     if input_file_path is not None:
@@ -48,9 +65,9 @@ def exec_command(ez: Ez,
             stdin = f.read()
 
     if ez.debug:
-        print(f"[green]EXEC:[/green] {command}")
+        printf(f"executing: {command}")
         if stdin is not None:
-            print(f"[green]..stdin[/green]\n{stdin}")
+            printf(f"stdin: \n{stdin}")
 
     p = subprocess.Popen(command_array, 
                          cwd=cwd,
@@ -81,16 +98,17 @@ def exec_command(ez: Ez,
                 break
 
         progress.console.bell()
-        progress.update(t, description=f"Completed ({retcode}) {description}")
+        description = format_output_string(f"completed: {description}")
+        progress.update(t, description=description)
         if is_ssh and p.returncode == 255:
             stderr = (p.stderr.read().decode('utf-8'))
-            print(f"\n[red]ERROR:[/red] ({p.returncode}) {stderr}")
-            print(f"..during execution of: {command}")
+            printf_err(f"error: ({p.returncode}) {stderr}")
+            printf(f"... during execution of: {command}")
             exit(p.returncode)
         elif not is_ssh and p.returncode != 0:
             stderr = (p.stderr.read().decode('utf-8'))
-            print(f"\n[red]ERROR:[/red] ({p.returncode}) {stderr}")
-            print(f"..during execution of: {command}")
+            printf_err(f"error: ({p.returncode}) {stderr}")
+            printf(f"... during execution of: {command}")
             exit(p.returncode)
         
         return (p.returncode, "\n".join(output))
@@ -109,10 +127,10 @@ def exec_script_using_ssh(ez: Ez,
     script_path must be an absolute path."""
 
     if script_path is None and script_text is None:
-        print("[red]ERROR[/red] must pass either script_path or script_text")
+        printf_err("error: must pass either script_path or script_text")
         exit(1)
     elif script_path is not None and script_text is not None:
-        print("[red]ERROR[/red] cannot pass both script_path and script_text")
+        printf_err("error: cannot pass both script_path and script_text")
         exit(1)
 
     host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
@@ -137,7 +155,7 @@ def exec_script_using_ssh(ez: Ez,
         console=console,
     ) as progress:
         t0 = progress.add_task(description)
-        completed = f"[green]COMPLETED[/green] {description}"
+        completed = format_output_string(f"completed: {description}")
         task_name = ""
         if line_by_line:
             # Process line by line and 
@@ -149,14 +167,14 @@ def exec_script_using_ssh(ez: Ez,
                     continue
                 if current_line.startswith("##"):
                     if task_name != "":
-                        completed = (f"[green]TASK COMPLETED[/green] "
-                                     f"{task_name}")
-                        progress.update(t, description=completed, 
-                                        completed=100)
+                        progress.update(t, 
+                            description=format_output_string(
+                                f"completed: {task_name}"), 
+                            completed=100)
                     i += 1
                     task_name = current_line[2:].strip()
-                    t = progress.add_task(
-                            f"[green]TASK RUNNING:[/green] {task_name}")
+                    t = progress.add_task(format_output_string(
+                        f"running: {task_name}"))
                     continue
                 if current_line.startswith("#"):
                     i += 1
@@ -168,15 +186,19 @@ def exec_script_using_ssh(ez: Ez,
                         current_line += f"\n  {block_line}"
                         if not block_line.endswith("\\"):
                             break
-                console.log(f"[green]{task_name}:[/green] {current_line}")
+                console.log(
+                        format_output_string(f"{task_name}: {current_line}"))
                 c.run(current_line)
                 i += 1
 
             progress.console.bell()
 
             # Complete - reboot if needed
-            if reboot:
-                c.run("sudo reboot", warn=True)
+            try:
+                if reboot:
+                    c.run("sudo reboot", warn=True)
+            except Exception:
+                pass
             progress.update(t0, description=completed)
             return (0, "")
         else:
@@ -196,7 +218,7 @@ def exec_command_return_dataframe(cmd):
     stream = StringIO(stdout)
     return pd.read_csv(stream, sep="\t", header=None)
 
-def copy_to_clipboard(ez:Ez, text: str):
+def copy_to_clipboard(ez: Ez, text: str):
     """Platform independent copy text to clipboard function"""
     if platform.system() == "Linux":
         if platform.release().find("WSL") != -1:
@@ -263,7 +285,8 @@ def get_active_compute_name(ez: Ez, compute_name) -> str:
     returns the active remote compute, if it is set."""
     if compute_name == None:
         if ez.active_remote_compute == "":
-            print("No active remote compute, must specify --compute-name")
+            printf_err("error: no active remote compute, must "
+                         "specify --compute-name")
             exit(1)
         else:
             return ez.active_remote_compute
@@ -281,18 +304,19 @@ def get_compute_size(ez: Ez, compute_name) -> str:
         # For now, it always returns a GPU-enabled SKU
         return "Standard_NC6_Promo"
     elif ez.active_remote_compute_type == "vm":
-        ez.debug_print(f"GET compute size for {compute_name}...")
+        ez.debug_print(format_output_string(
+            f"get compute size for {compute_name}"))
         get_compute_size_cmd = (
             f"az vm show --name {compute_name} "
             f"--resource-group {ez.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
         _, compute_size = exec_command(ez, get_compute_size_cmd)
-        ez.debug_print(f"RESULT: {compute_size}")
+        ez.debug_print(format_output_string(f"result: {compute_size}"))
         return compute_size
     else:
-        print(f"Unknown active_remote_compute_type in ~/.ez.conf "
-            f"detected: {ez.active_remote_compute_type}")
+        printf_err("error: unknown active_remote_compute_type in ~/.ez.conf "
+                   f"detected: {ez.active_remote_compute_type}")
         exit(1)
 
 def is_vm_running(ez: Ez, vm_name) -> bool:
@@ -403,8 +427,9 @@ def get_vm_size(ez: Ez, vm_name):
         f"--resource-group {ez.resource_group} "
         f"--query hardwareProfile.vmSize -o tsv"
     )
-    description = f"[green]QUERYING[/green] {vm_name} for its size..."
-    _, vm_size = exec_command(ez, info_cmd, description=description)
+    _, vm_size = exec_command(ez, 
+        info_cmd, 
+        description=f"querying {vm_name} for its size")
     return vm_size
 
 def generate_devcontainer_json(ez: Ez, jupyter_port_number, token, 
@@ -734,7 +759,6 @@ def pick_vm(resource_group, show_gpu_only=False):
     options = "Name:name, Size:hardwareProfile.vmSize, Running:powerState"
     cmd = (f"az vm list --resource-group {resource_group} --query "
            f"'[].{{{options}}}' -o tsv --show-details")
-    print(cmd)
     df = exec_command_return_dataframe(cmd)
     df.columns = ["Name", "Size", "Running"]
     df["GPU"] = df["Size"].apply(lambda s: is_gpu(s))

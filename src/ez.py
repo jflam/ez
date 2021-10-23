@@ -9,7 +9,7 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from azutil import exec_command
+from azutil import exec_command_return_dataframe
 from ez_state import Ez
 from io import StringIO
 from os import path, system
@@ -67,13 +67,6 @@ def ez(ctx, debug, insiders, dependencies, disable_jit):
     def _save_context():
         ctx.obj.save()
     ctx.call_on_close(_save_context)
-
-# TODO: delete after refactor
-def exec_command_return_dataframe(cmd):
-    result = subprocess.run(cmd.split(' '), capture_output=True)
-    stdout = result.stdout.decode("utf-8")
-    stream = StringIO(stdout)
-    return pd.read_csv(stream, sep="\t", header=None)
 
 @click.command()
 @click.pass_obj
