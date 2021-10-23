@@ -1,6 +1,7 @@
 # Compute commands
 
 import click
+import constants as C
 import json
 import subprocess
 
@@ -229,7 +230,36 @@ def __enable_github(ez: Ez,
         exit(1)
     public_key = result[1].strip()
 
-    # TODO: ensure that github RSA key is in the known-hosts file
+    # Ensure that github RSA key is in the known-hosts file
+    hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+    with Connection(hostname, user=ez.user_name) as c:
+        # Retrieve the GitHub public key
+        c.run("ssh-keyscan -H github.com > /tmp/github.pub", hide="both")
+
+        # Compute the SHA256 hash of the public key
+        result = c.run("ssh-keygen -lf /tmp/github.pub -E sha256", 
+                       hide="both")
+
+        # Compare computed SHA256 hash of public key with known good value
+        if C.GITHUB_PUBLIC_KEY_SHA256 in result.stdout:
+
+            # Append the retrieved GitHub public key to known_hosts
+            c.run("cat /tmp/github.pub >> ~/.ssh/known_hosts")
+
+            # Verify that we can actually connect to GitHub
+            result = c.run("ssh -T git@github.com", warn=True, hide="both")
+            if "successfully authenticated" in result.stdout:
+                printf("completed: validating GitHub public key and adding "
+                       "to known_hosts")
+            else:
+                printf_err(f"error connecting to GitHub: {result.stderr}")
+        else:
+            printf_err(f"error: possible man-in-the-middle attack! "
+                       f"Computed SHA256 hash from public key retrieved from "
+                       f"github.com is: {result.stdout} and known "
+                       f"SHA256 hash is {C.GITHUB_PUBLIC_KEY_SHA256}.")
+            exit(1)
+
     gh_config = """
 Host github.com
     HostName github.com
@@ -240,7 +270,6 @@ Host github.com
     with open("/tmp/gh_config", "w") as f:
         f.write(gh_config)
 
-    hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     with Connection(hostname, user=ez.user_name) as c:
         c.put("/tmp/gh_config", f"/home/{ez.user_name}/gh_config")
         c.run(f"cat /home/{ez.user_name}/gh_config "
