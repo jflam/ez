@@ -303,8 +303,10 @@ def up(ez: Ez, compute_name, env_name):
               help="Environment name to start")
 @click.option("--use-acr", is_flag=True, default=False,
               help="Generate container using Azure Container Registry")
+@click.option("--build", is_flag=True, default=False,
+              help="When used with --use-acr forces a build of the container")
 @click.pass_obj
-def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
+def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
 
@@ -460,7 +462,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr):
                   f"does not have a Container Registry configured.")
             exit(1)
         docker_source=f"""
-    "image": "{ez.registry_name}.azurecr.io/{env_name}",
+    "image": "{ez.registry_name}.azurecr.io/{ez.workspace_name}:{env_name}",
 """
     else:
         docker_source=f"""
@@ -538,10 +540,10 @@ RUN pip install -v -r requirements.txt
     # docker image there and import it. Sample command:
     #
     # az acr build --registry jflamregistry --image wine . 
-    if use_acr:
+    if use_acr and build:
         # TODO: only build if it isn't in the registry already
         # probably need a --force-build switch to force this happening too
-        full_registry_name = f"{ez.registry_name}.azurecr.io/{env_name}"
+        full_registry_name = f"{ez.registry_name}.azurecr.io/{ez.workspace_name}"
         cmd = f"docker images {full_registry_name}"
         result = exec_command(ez, 
             cmd, 
