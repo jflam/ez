@@ -24,6 +24,8 @@ from typing import Tuple
 def format_output_string(text: str, error: bool=False):
     """Format output string to capitalize first word and colorize based on
     whether it is an error or not"""
+    if not text:
+        return ''
     first, rest = text.split(' ', 1)
     color = "red" if error else "green"
     return f"[{color}]{first.upper()}[/{color}] {rest}"

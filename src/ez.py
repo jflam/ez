@@ -50,7 +50,8 @@ def check_dependencies(ez: Ez, force: bool=False) -> bool:
         ("Cannot find the GitHub CLI (gh), which is needed for interactions "
          "with GitHub. https://cli.github.com/manual/installation"), force):
         return False
-    retcode, output = exec_command(ez, "gh auth status")
+    result = subprocess.run(["gh", "auth", "status"], capture_output=True)
+    output = result.stderr.decode("utf-8")
     if not "Logged in to github.com as" in output:
         printf_err("Not logged into Github.com using the GitHub CLI. "
                    "Log in using: gh auth login")
