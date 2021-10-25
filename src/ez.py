@@ -9,7 +9,7 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from azutil import exec_command_return_dataframe
+from azutil import exec_command_return_dataframe, exec_command, printf_err
 from ez_state import Ez
 from io import StringIO
 from os import path, system
@@ -34,7 +34,7 @@ def check_installed(command: str,
             print(f"TO INSTALL: {install_help}")
         return False
 
-def check_dependencies(force = False) -> bool:
+def check_dependencies(ez: Ez, force: bool=False) -> bool:
     """Install dependencies required for ez to run"""
     if not check_installed("az", 
         ("The Azure Command Line Interface (CLI) must be installed to "
@@ -50,6 +50,11 @@ def check_dependencies(force = False) -> bool:
         ("Cannot find the GitHub CLI (gh), which is needed for interactions "
          "with GitHub. https://cli.github.com/manual/installation"), force):
         return False
+    retcode, output = exec_command(ez, "gh auth status")
+    if not "Logged in to github.com as" in output:
+        printf_err("Not logged into Github.com using the GitHub CLI. "
+                   "Log in using: gh auth login")
+        return False
     return True
 
 @click.group()
@@ -62,7 +67,7 @@ def ez(ctx, debug, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
     environments. To get started run ez init!"""
     ctx.obj = Ez(debug=debug, insiders=insiders, disable_jit=disable_jit)
-    if not check_dependencies(dependencies):
+    if not check_dependencies(ctx.obj, dependencies):
         exit(1)
     def _save_context():
         ctx.obj.save()
