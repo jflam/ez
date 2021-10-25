@@ -134,7 +134,8 @@ def exec_script_using_ssh(ez: Ez,
     elif script_path is not None and script_text is not None:
         printf_err("error: cannot pass both script_path and script_text")
         exit(1)
-
+    
+    description=format_output_string(description)
     host_uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     c = Connection(host_uri, 
         user=ez.user_name, 
@@ -190,7 +191,7 @@ def exec_script_using_ssh(ez: Ez,
                             break
                 console.log(
                         format_output_string(f"{task_name}: {current_line}"))
-                c.run(current_line)
+                c.run(current_line, warn=True)
                 i += 1
 
             progress.console.bell()
@@ -207,9 +208,9 @@ def exec_script_using_ssh(ez: Ez,
             # Run everything as a single block
             single_block = "\n".join(lines)
             if hide_output:
-                result = c.run(single_block, hide='stdout')
+                result = c.run(single_block, hide='stdout', warn=True)
             else:
-                result = c.run(single_block)
+                result = c.run(single_block, warn=True)
             progress.update(t0, description=completed)
             return (result.exited, result.stdout)
 
