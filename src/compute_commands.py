@@ -89,7 +89,7 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
-        description = f"[green]INSTALLING[/green] system software on compute"
+        description = "Installing system software on compute"
         provision_vm_script_path = (
             f"{path.dirname(path.realpath(__file__))}/scripts/"
             f"{provision_vm_script}"
@@ -110,7 +110,7 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
                 ez,
                 compute_name,
                 script_text="sudo reboot",
-                description=f"[green]REBOOTING[/green] {compute_name}"
+                description=f"Rebooting {compute_name}"
             )
         except Exception:
             pass
@@ -134,7 +134,7 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
 @click.pass_obj
 def update_system(ez: Ez, compute_name, compute_size):
     """Update the system software on compute"""
-    description = f"[green]UPDATING[/green] system software on compute"
+    description = "Updating system software on compute"
     provision_vm_script = "provision-cpu"
     if is_gpu(compute_size):
         provision_vm_script = "provision-gpu"
@@ -191,7 +191,7 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
     return exec_script_using_ssh(ez, 
         script_text=bashrc, 
         compute_name=compute_name,
-        description=f"[green]UPDATING[/green] ~/.bashrc on {compute_name}")
+        description=f"Updating ~/.bashrc on {compute_name}")
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -215,8 +215,7 @@ def __enable_github(ez: Ez,
     result = exec_script_using_ssh(ez,
         script_text=cmd,
         compute_name=compute_name,
-        description=(f"[green]GENERATING[/green] public/private "
-                     f"key pair on {compute_name}"))
+        description=f"Generating public/private key pair on {compute_name}")
 
     # cat the public key
     cmd = f"cat /home/{ez.user_name}/.ssh/id_rsa_github.pub"
@@ -224,9 +223,9 @@ def __enable_github(ez: Ez,
         compute_name=compute_name, 
         script_text=cmd,
         hide_output=True,
-        description="[green]READING[/green] generated public key")
+        description="Reading generated public key")
     if result[0] != 0:
-        print(f"[red]ERROR[/red]: {result[1]}")
+        printf_err(f"Error: {result[1]}")
         exit(1)
     public_key = result[1].strip()
 
@@ -280,8 +279,8 @@ Host github.com
         copy_to_clipboard(ez, public_key)
 
         # Open https://github.com/settings/ssh/new
-        print("[green]COPIED[/green] public key to clipboard")
-        print("[green]OPEN[/green] https://github.com/settings/ssh/new in "
+        printf("Copied public key to clipboard")
+        printf("Open https://github.com/settings/ssh/new in "
             "your web browser and paste the contents of the public key into "
             "the public key field and name your new SSH token to match this "
             f"machine. Suggested name: {compute_name}-token")
@@ -393,7 +392,7 @@ def ssh(ez: Ez, compute_name):
         f" -o StrictHostKeyChecking=no "
         f"{ssh_remote_host}"
     )
-    print(f"[green]CONNECTING[/green] to {ssh_remote_host}")
+    printf(f"Connecting to {ssh_remote_host}")
     system(cmd)
 
 @click.command()
@@ -445,5 +444,5 @@ def info(ez: Ez, compute_name):
             f"[green]INFO[/green] for {compute_name} size: {specs[2]}: "
             f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
     else:
-        print(f"[red]{out}[/red]")
+        printf_err(out)
     exit(retcode)
