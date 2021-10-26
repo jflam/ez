@@ -3,6 +3,7 @@ import json
 import os
 
 from os import path
+from datetime import datetime
 
 # Ez object defines application-wide state 
 
@@ -27,6 +28,9 @@ class Ez(object):
     active_remote_compute_type: str 
     active_remote_env: str
 
+    # Authentication state
+    last_auth_check: datetime
+
     # Runtime state
     logged_in: bool
     jit_activated: bool
@@ -47,6 +51,7 @@ class Ez(object):
         """Load configuration settings from ~/.ez.json"""
         config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
 
+        # TODO: handle older versions of .ez.json gracefully
         if path.exists(config_path):
             with open(config_path, "r") as f:
                 ez_config = json.load(f)
@@ -60,6 +65,8 @@ class Ez(object):
             self.active_remote_compute = ez_config["active_compute"]
             self.active_remote_compute_type = ez_config["active_compute_type"]
             self.active_remote_env = ez_config["active_env"]
+            self.last_auth_check = datetime.strptime(
+                ez_config["last_auth_check"], "%c")
         else:
             self.workspace_name = None
             self.resource_group = None 
@@ -71,6 +78,7 @@ class Ez(object):
             self.active_remote_compute = None
             self.active_remote_compute_type = None
             self.active_remote_env = None
+            self.last_auth_check = datetime.now()
 
     def save(self):
         """Save configuration settings to ~/.ez.json"""
@@ -85,7 +93,8 @@ class Ez(object):
             "user_name": self.user_name,
             "active_compute": self.active_remote_compute,
             "active_compute_type": self.active_remote_compute_type,
-            "active_env": self.active_remote_env 
+            "active_env": self.active_remote_env,
+            "last_auth_check": datetime.strftime(self.last_auth_check, "%c")
         }
         with open(config_path, "w") as f:
             json.dump(ez_config, f, indent=4)

@@ -1,5 +1,6 @@
 # Utility functions for working with Azure
 
+import datetime
 import json
 import pandas as pd
 import platform
@@ -39,15 +40,30 @@ def printf(text:str):
     print(format_output_string(text, error=False))
 
 def login(ez: Ez):
-    """Login using the interactive session user's credentials"""
-    if not ez.logged_in:
+    """Login to Azure and GitHub using existing credentials"""
+
+    # Daily check
+    delta = datetime.datetime.now() - ez.last_auth_check
+    if delta.days < 2:
+        ez.logged_in = True
+        return
+    elif not ez.logged_in:
         if system("az account show --query name > /dev/null") != 0:
             success = system("az login --use-device-code > /dev/null")
             if success == 0:
                 ez.logged_in = True
             else:
                 printf_err("error: could not log into Azure automatically. "
-                    "Please login using az login")
+                    "Please login manually using: az login")
+                exit(1)
+        if system("gh auth status > /dev/null 2&>1") != 0:
+            printf("start login procedure")
+            success = system("gh auth login")
+            if success == 0:
+                ez.logged_in = True
+            else:
+                printf_err("Could not log into GitHub automatically. "
+                    "Please login manually using: gh auth login")
                 exit(1)
 
 def exec_command(ez: Ez, 
