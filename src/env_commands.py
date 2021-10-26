@@ -2,13 +2,12 @@
 
 import click, glob, json, os, random, shutil, subprocess, uuid
 
-from azutil import (build_container_image, exec_command, exec_script_using_ssh, launch_vscode, 
-    pick_vm, generate_vscode_project, is_gpu, jit_activate_vm, 
-    get_active_compute_name, get_compute_size, format_output_string,
+from azutil import (build_container_image, exec_command, 
+    exec_script_using_ssh, launch_vscode, pick_vm, generate_vscode_project, 
+    is_gpu, jit_activate_vm, get_active_compute_name, get_compute_size, 
     printf, printf_err)
 from ez_state import Ez
 from os import getcwd, path
-from rich import print
 
 def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project, 
                           jupyter_port, token):
@@ -214,7 +213,7 @@ def ssh(ez: Ez, compute_name, env_name):
     vsc_containers = [c for c in containers if c.startswith(
                                                     active_container_name)]
     if len(vsc_containers) != 1:
-        printf_err(f"error: >1 container running with same env_name:")
+        printf_err(f"Error: >1 container running with same env_name:")
         print(vsc_containers)
         exit(1)
 
@@ -404,7 +403,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         # settings.json file that contains the .vscode/settings.json file that
         # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
 
-        print(f"[green]GENERATING[/green] .vscode/settings.json")
+        printf("Generating .vscode/settings.json")
         ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}"
                           ".cloudapp.azure.com")
         settings_json = f"""
@@ -438,7 +437,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # Those files could all be run from the /build directory as well with
     # a hand-written Dockerfile
 
-    print(f"[green]GENERATING[/green] .devcontainer/devcontainer.json")
+    printf("Generating .devcontainer/devcontainer.json")
     if compute_name == ".":
         mount_path = local_env_path
     else:
@@ -457,8 +456,8 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # by logging in automatically into Docker when you ask it to.
     if use_acr:
         if ez.registry_name is None:
-            print(f"[red]ERROR:[/red] resource group {ez.resource_group} "
-                  f"does not have a Container Registry configured.")
+            printf_err(f"Error: resource group {ez.resource_group} "
+                "does not have an Azure Container Registry configured.")
             exit(1)
         docker_source=f"""
     "image": "{ez.registry_name}.azurecr.io/{ez.workspace_name}:{env_name}",
@@ -514,7 +513,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # clone the project locally as well.
 
     # Copy files from the /build directory into the .devcontainer directory
-    print("[green]COPYING[/green] /build files to /.devcontainer")
+    printf("Copying /build files to /.devcontainer")
     build_files = glob.glob(f"{local_env_path}/build/*")
     for file in build_files:
         if os.path.isfile(file):
@@ -530,7 +529,7 @@ COPY requirements.txt /tmp/requirements.txt
 WORKDIR /tmp
 RUN pip install -v -r requirements.txt
     """
-        print(f"[green]GENERATING[/green] default .devcontainer/Dockerfile")
+        printf("Generating default .devcontainer/Dockerfile")
         dockerfile_path = f"{devcontainer_dir}/Dockerfile"
         with open(dockerfile_path, "wt+", encoding="utf-8") as f:
             f.write(dockerfile)
@@ -542,7 +541,8 @@ RUN pip install -v -r requirements.txt
     if use_acr and build:
         # TODO: only build if it isn't in the registry already
         # probably need a --force-build switch to force this happening too
-        full_registry_name = f"{ez.registry_name}.azurecr.io/{ez.workspace_name}"
+        full_registry_name = (f"{ez.registry_name}.azurecr.io/"
+                              f"{ez.workspace_name}")
         cmd = f"docker images {full_registry_name}"
         result = exec_command(ez, 
             cmd, 
@@ -551,8 +551,7 @@ RUN pip install -v -r requirements.txt
         if result[0] != 0:
             exit(1)
         if result[1].find(full_registry_name):
-            print(f"[green]SKIPPING[/green] build. {full_registry_name} "
-                  f"exists already")
+            printf(f"Skipping build, {full_registry_name} exists already")
         else:
             cmd = (f"az acr build --registry {ez.registry_name} "
                 f"--image {env_name} .")
