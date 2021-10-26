@@ -48,9 +48,8 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
     if check_dns:
         compute_dns_name = f"{compute_name}.{ez.region}.cloudapp.azure.com"
         if system(f"nslookup {compute_dns_name} > /dev/null") == 0:
-            printf((
-                f"Error: the domain name {compute_dns_name} is already "
-                f"taken. Try a different --compute-name"))
+            printf_err(f"The domain name {compute_dns_name} is already "
+                "taken. Try a different --compute-name")
             exit(1)
 
     # Select provisioning scripts for the VM based on whether compute_size is
@@ -225,7 +224,7 @@ def __enable_github(ez: Ez,
         hide_output=True,
         description="Reading generated public key")
     if result[0] != 0:
-        printf_err(f"Error: {result[1]}")
+        printf_err(f"{result[1]}")
         exit(1)
     public_key = result[1].strip()
 
@@ -253,7 +252,7 @@ def __enable_github(ez: Ez,
             else:
                 printf_err(f"error connecting to GitHub: {result.stderr}")
         else:
-            printf_err(f"error: possible man-in-the-middle attack! "
+            printf_err(f"Possible man-in-the-middle attack! "
                        f"Computed SHA256 hash from public key retrieved from "
                        f"github.com is: {result.stdout} and known "
                        f"SHA256 hash is {C.GITHUB_PUBLIC_KEY_SHA256}.")

@@ -33,7 +33,7 @@ def format_output_string(text: str, error: bool=False):
 
 def printf_err(text:str):
     """Print formatted error string"""
-    print(format_output_string(text, error=True))
+    print(format_output_string(f"error: {text}", error=True))
 
 def printf(text:str):
     """Print formatted output string"""
@@ -53,7 +53,7 @@ def login(ez: Ez):
             if success == 0:
                 ez.logged_in = True
             else:
-                printf_err("error: could not log into Azure automatically. "
+                printf_err("Could not log into Azure automatically. "
                     "Please login manually using: az login")
                 exit(1)
         if system("gh auth status > /dev/null 2&>1") != 0:
@@ -120,12 +120,12 @@ def exec_command(ez: Ez,
         progress.update(t, description=description)
         if is_ssh and p.returncode == 255:
             stderr = (p.stderr.read().decode('utf-8'))
-            printf_err(f"error: ({p.returncode}) {stderr}")
+            printf_err(f"({p.returncode}) {stderr}")
             printf(f"... during execution of: {command}")
             exit(p.returncode)
         elif not is_ssh and p.returncode != 0:
             stderr = (p.stderr.read().decode('utf-8'))
-            printf_err(f"error: ({p.returncode}) {stderr}")
+            printf_err(f"({p.returncode}) {stderr}")
             printf(f"... during execution of: {command}")
             exit(p.returncode)
         
@@ -145,10 +145,10 @@ def exec_script_using_ssh(ez: Ez,
     script_path must be an absolute path."""
 
     if script_path is None and script_text is None:
-        printf_err("error: must pass either script_path or script_text")
+        printf_err("Must pass either script_path or script_text")
         exit(1)
     elif script_path is not None and script_text is not None:
-        printf_err("error: cannot pass both script_path and script_text")
+        printf_err("Cannot pass both script_path and script_text")
         exit(1)
     
     description=format_output_string(description)
@@ -304,8 +304,7 @@ def get_active_compute_name(ez: Ez, compute_name) -> str:
     returns the active remote compute, if it is set."""
     if compute_name == None:
         if ez.active_remote_compute == "":
-            printf_err("error: no active remote compute, must "
-                         "specify --compute-name")
+            printf_err("No active remote compute: specify --compute-name")
             exit(1)
         else:
             return ez.active_remote_compute
@@ -334,7 +333,7 @@ def get_compute_size(ez: Ez, compute_name) -> str:
         ez.debug_print(format_output_string(f"result: {compute_size}"))
         return compute_size
     else:
-        printf_err("error: unknown active_remote_compute_type in ~/.ez.conf "
+        printf_err("Unknown active_remote_compute_type in ~/.ez.conf "
                    f"detected: {ez.active_remote_compute_type}")
         exit(1)
 

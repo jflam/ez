@@ -22,7 +22,7 @@ def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project,
 def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
     """Run the environment in Kubernetes"""
-    printf_err("error: k8s support needs reimplementation")
+    printf_err("k8s support needs reimplementation")
     exit(1)
 
     path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
@@ -146,19 +146,19 @@ foo.txt :/remote/path    Copy foo.txt to active environment
 :/remote/path/*.txt ./   Copy active environment .txt files locally
     """
     if not ez.active_remote_env:
-        printf_err("error: no running environment")
+        printf_err("No running environment")
         exit(1)
     
     if not src:
-        printf_err("error: missing src parameter")
+        printf_err("Missing src parameter")
         exit(1)
     
     if not dest:
-        printf_err("error: missing dest parameter")
+        printf_err("Missing dest parameter")
         exit(1)
     
     if src.startswith(":") and dest.startswith(":"):
-        printf_err("error: both src and dest cannot start with ':' "
+        printf_err("Both src and dest cannot start with ':' "
                    "to indicate remote")
         exit(1)
     elif src.startswith(":"):
@@ -174,7 +174,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment
                f"{ez.active_remote_env}/{dest[1:]}") 
         subprocess.run(cmd.split(" "))
     else:
-        printf_err("error: one of src or dest must start with ':' to "
+        printf_err("One of src or dest must start with ':' to "
                    "indicate remote")
         exit(1)
 
@@ -188,7 +188,7 @@ def ssh(ez: Ez, compute_name, env_name):
     """SSH to an environment"""
     if not ez.active_remote_compute:
         if not compute_name:
-            printf_err("error: --compute-name parameter must be specified "
+            printf_err("--compute-name parameter must be specified "
                        "because there isn't an active compute environment.")
             exit(1)
     else:
@@ -196,7 +196,7 @@ def ssh(ez: Ez, compute_name, env_name):
 
     if not ez.active_remote_env:
         if not env_name:
-            printf_err("error: --env-name parameter must be specified "
+            printf_err("--env-name parameter must be specified "
                        "because there isn't an active environment.")    
             exit(1)
     else:
@@ -213,7 +213,7 @@ def ssh(ez: Ez, compute_name, env_name):
     vsc_containers = [c for c in containers if c.startswith(
                                                     active_container_name)]
     if len(vsc_containers) != 1:
-        printf_err(f"Error: >1 container running with same env_name:")
+        printf_err(f">1 container running with same env_name:")
         print(vsc_containers)
         exit(1)
 
@@ -250,7 +250,7 @@ def up(ez: Ez, compute_name, env_name):
         "git config --get remote.origin.url")
 
     if git_remote_uri == "":
-        printf_err(f"error: directory {getcwd()} is not in a git repo")
+        printf_err(f"Directory {getcwd()} is not in a git repo")
         exit(1)
 
     printf(f"migrating {git_remote_uri} to {compute_name}")
@@ -456,7 +456,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # by logging in automatically into Docker when you ask it to.
     if use_acr:
         if ez.registry_name is None:
-            printf_err(f"Error: resource group {ez.resource_group} "
+            printf_err(f"Resource group {ez.resource_group} "
                 "does not have an Azure Container Registry configured.")
             exit(1)
         docker_source=f"""

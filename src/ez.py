@@ -29,7 +29,7 @@ def check_installed(command: str,
     if returncode == 0:
         return True
     else:
-        print(f"ERROR: required dependency {command} not installed")
+        printf_err(f"Required dependency {command} not installed")
         if install_help is not None:
             print(f"TO INSTALL: {install_help}")
         return False
