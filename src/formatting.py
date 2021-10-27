@@ -1,5 +1,7 @@
 # Formatting helpers
 
+from rich import print
+
 def format_output_string(text: str, error: bool=False):
     """Format output string to capitalize first word and colorize based on
     whether it is an error or not"""
