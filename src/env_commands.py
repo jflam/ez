@@ -141,11 +141,18 @@ The format of <source> and <dest> are important. Examples:
 
 \b
 foo.txt :.               Copy foo.txt to active environment /workspace dir
-foo.txt :/remote/path    Copy foo.txt to active environment
-:/remote/path/foo.txt .  Copy active environment foo.txt locally
-./*.txt :/remote/path    Copy local .txt files to active environment
-:/remote/path/*.txt ./   Copy active environment .txt files locally
+foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
+:/remote/path/foo.txt .  Copy active environment /remote/path/foo.txt locally
+./*.txt :/remote/path    Copy local .txt files to active environment /remote/path
+:/remote/path/*.txt ./   Copy active environment /remote/path/*.txt files locally
     """
+    if ez.active_remote_compute == ".":
+        # TODO: this might not be the case though - let's get feedback on this
+        printf_err("Not needed for locally running environments. You can "
+            "copy files to/from the local directory of the GitHub repo "
+            "using existing filesystem commands.")
+        exit(1)
+
     if not ez.active_remote_env:
         printf_err("No running environment")
         exit(1)
@@ -203,11 +210,15 @@ def ssh(ez: Ez, compute_name, env_name):
     else:
         env_name = ez.active_remote_env
 
-    # Run docker ps on the remote VM to figure out what the container id of 
-    # the running VS Code container is
-    cmd = (f"ssh -i {ez.private_key_path} {ez.user_name}@{compute_name}."
-           f"{ez.region}.cloudapp.azure.com docker ps --format "
-           "{{.Image}},{{.ID}}")
+    if compute_name != ".":
+        # Run docker ps on the remote VM to figure out what the container id
+        # of the running VS Code container is
+        cmd = (f"ssh -i {ez.private_key_path} {ez.user_name}@{compute_name}."
+            f"{ez.region}.cloudapp.azure.com docker ps --format "
+            "{{.Image}},{{.ID}}")
+    else:
+        # Run a local docker ps command to get the container id
+        cmd = "docker ps --format {{.Image}},{{.ID}}"
     result = subprocess.run(cmd.split(' '), capture_output=True)
     containers = result.stdout.decode("utf-8").split("\n")
     active_container_name = f"vsc-{env_name}-"
@@ -218,14 +229,20 @@ def ssh(ez: Ez, compute_name, env_name):
         print(vsc_containers)
         exit(1)
 
-    # Open a tunneled SSH connection into the running remote container
     image_name, container_id = vsc_containers[0].split(",")
-    cmd = (f"ssh -tt -i {ez.private_key_path} {ez.user_name}@{compute_name}."
-           f"{ez.region}.cloudapp.azure.com docker exec -it "
-           f"-w /workspace {container_id} /bin/bash")
-    printf(f"opened SSH connection to container {container_id} running "
-           f"using image {image_name} on "
-           f"{compute_name}.{ez.region}.cloudapp.azure.com")
+    if compute_name != ".":
+        # Open a tunneled SSH connection into the running remote container
+        cmd = (f"ssh -tt -i {ez.private_key_path} "
+            f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com "
+            f"docker exec -it -w /workspace {container_id} /bin/bash")
+        printf(f"opened SSH connection to container {container_id} running "
+            f"using image {image_name} on "
+            f"{compute_name}.{ez.region}.cloudapp.azure.com")
+    else:
+        # Handle the local case
+        cmd = f"docker exec -it -w /workspace {container_id} /bin/bash"
+        printf(f"opened SSH connection to container {container_id} running "
+               f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
 
 @click.command()
@@ -309,8 +326,6 @@ def up(ez: Ez, compute_name, env_name):
 def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     """New experimental version of the run command that will remove the need
     to have repo2docker installed."""
-
-    # TODO: validate this running locally where compute_name == "."
 
     # If compute name is "-" OR there is no active compute defined, prompt
     # the user to select (or create) a compute
@@ -420,6 +435,16 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
             os.mkdir(vscode_dir)
         with open(settings_json_path, "wt+", encoding="utf-8") as f:
             f.write(settings_json)
+    else:
+        # local contrainer execution, so we need to generate a null 
+        # .vscode/settings.json file (or delete existing file if there)
+
+        # TODO: what really needs to be done is to remove an existing 
+        # docker.host key from an existing settings.json file if it is there
+        vscode_dir = f"{local_env_path}/.vscode"
+        if os.path.exists(vscode_dir):
+            if os.path.exists("settings.json"):
+                os.remove(f"{vscode_dir}/settings.json")
 
     # Generate the devcontainer.json file. Much of this will eventually be
     # parameterized
@@ -568,7 +593,7 @@ RUN pip install -v -r requirements.txt
     # this command will be replaced with "devcontainer open ." but because of
     # the remote bug in devcontainer, we will avoid doing this for now and
     # manually reopen the VS Code project.
-    printf(f"LAUNCHING VS Code ... you will need to reload in "
+    printf(f"Launching VS Code ... you will need to reload in "
            f"remote container by clicking the Reopen in Container button in "
            f"the notification box in the bottom right corner.")
     launch_vscode(ez, local_env_path)
