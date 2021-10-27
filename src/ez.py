@@ -1,7 +1,6 @@
 import click
 import constants as C
 import os
-import pandas as pd
 import pathlib
 import subprocess
 
@@ -9,10 +8,10 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from azutil import exec_command_return_dataframe, exec_command, printf_err
+from exec import exec_command_return_dataframe
 from ez_state import Ez
-from io import StringIO
-from os import path, system
+from formatting import printf_err
+from os import system
 from rich import print
 from rich.console import Console 
 from rich.prompt import IntPrompt, Prompt

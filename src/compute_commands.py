@@ -6,10 +6,11 @@ import json
 import subprocess
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
-    exec_script_using_ssh, exec_command, jit_activate_vm, get_vm_size,
-    get_active_compute_name, printf, printf_err, format_output_string)
+    jit_activate_vm, get_vm_size, get_active_compute_name)
+from exec import exec_script_using_ssh, exec_command
 from ez_state import Ez
 from fabric import Connection
+from formatting import printf, printf_err
 from os import path, system
 from rich import print
 from typing import Tuple

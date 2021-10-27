@@ -2,11 +2,12 @@
 
 import click, glob, json, os, random, shutil, subprocess, uuid
 
-from azutil import (build_container_image, exec_command, 
-    exec_script_using_ssh, launch_vscode, pick_vm, generate_vscode_project, 
-    is_gpu, jit_activate_vm, get_active_compute_name, get_compute_size, 
-    printf, printf_err)
+from azutil import (build_container_image, launch_vscode, pick_vm, 
+    generate_vscode_project, is_gpu, jit_activate_vm, 
+    get_active_compute_name, get_compute_size)
+from exec import exec_script_using_ssh, exec_command
 from ez_state import Ez
+from formatting import printf, printf_err
 from os import getcwd, path
 
 def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project, 
