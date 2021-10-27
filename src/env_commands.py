@@ -375,13 +375,14 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         # starting
         remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
 
-        # In the remote case, it needs to conditionally clone the git repo onto
-        # the remote VM. If the repo was already cloned on the VM, then we need
-        # to cd into the dir and git pull that repo. Otherwise just do the clone.
+        # In the remote case, it needs to conditionally clone the git repo
+        # onto the remote VM. If the repo was already cloned on the VM, then
+        # we need to cd into the dir and git pull that repo. Otherwise just do
+        # the clone.
         description = (f"clone/update {git_uri} on {compute_name} "
                        f"at {remote_env_path}")
-        remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && cd {remote_env_path} "
-                        f"&& git pull")
+        remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "
+                           f"cd {remote_env_path} && git pull")
         exec_script_using_ssh(ez, 
             compute_name=compute_name, 
             script_text=remote_pull_cmd, 
@@ -402,7 +403,8 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         # If it is a remote launch, we will need to generate the information
         # needed for the local devcontainer.json file, as well as for the
         # settings.json file that contains the .vscode/settings.json file that
-        # contains "docker.host": "ssh://user@machine.region.cloudapp.azure.com"
+        # contains "docker.host":
+        # "ssh://user@machine.region.cloudapp.azure.com"
 
         printf("Generating .vscode/settings.json")
         ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}"
