@@ -1,51 +1,20 @@
 #!/usr/bin/env bash
 
-# Script to provision a GPU machine
-# This script will be copied to an Azure GPU VM via scp and executed via ssh
+# Script to provision a CPU machine
+#
+# Note that any bash variables set by this script need to be used from the 
+# same logical line, i.e., they need to be concatenated using the && operator
 
-set -o nounset   # fail on uninitialized variable references
-
-# These next two options should likely be turned on only in debug mode
-
-set -o errexit   # exit on error on commands -- probably should do this only in debug mode
-set -o pipefail  # exit status of last command that threw non-zero exit code is returned
-
-# Script (manual commands that I typed in -- will clean up later)
+## UPDATE system software
 sudo apt update
 sudo apt upgrade -y
+
+## INSTALL build-essential
 sudo apt install build-essential -y
 
-# Install Docker
-sudo apt-get install \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg-agent \
-    software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+## INSTALL Docker
+curl https://get.docker.com | sh && sudo systemctl --now enable docker
 
-# Enable docker to run under a non superuser account
-sudo gpasswd -a $USER docker
-newgrp docker
-
-# Install miniconda for all users (because this will become an image later)
-mkdir ~/tmp; cd ~/tmp
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-sudo bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda
-
-# enable non-su access to miniconda
-sudo groupadd miniconda-users
-sudo chgrp -R miniconda-users /opt/miniconda
-sudo chmod 770 -R /opt/miniconda 
-sudo gpasswd -a $USER miniconda-users
-newgrp miniconda-users
-
-# Initialize conda
-eval "$(/opt/miniconda/bin/conda shell.bash hook)"
-conda init 
+## CONFIGURE Docker to run without sudo
+# https://docs.docker.com/engine/install/linux-postinstall/
+sudo usermod -aG docker $USER

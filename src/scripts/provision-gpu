@@ -10,7 +10,6 @@ sudo apt update
 sudo apt upgrade -y
 
 ## INSTALL build-essential
-sudo apt update
 sudo apt install build-essential -y
 
 ## INSTALL cuda-drivers
