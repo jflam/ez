@@ -2,6 +2,7 @@ import click
 import constants as C
 import os
 import pathlib
+import platform
 import subprocess
 
 import compute_commands
@@ -35,16 +36,29 @@ def check_installed(command: str,
 
 def check_dependencies(ez: Ez, force: bool=False) -> bool:
     """Install dependencies required for ez to run"""
-    if not check_installed("az", 
-        ("The Azure Command Line Interface (CLI) must be installed to "
-         "communicate with Azure.\n"
-        "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"), force):
-        return False
-    if not check_installed("docker", 
-        ("Cannot find docker, which is needed to run the ez containers\n"
-        "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
-        ), force):
-        return False
+    # NOTE: these are Windows instructions
+    if platform.system() == "Linux":
+        if not check_installed("az", 
+            ("The Azure Command Line Interface (CLI) must be installed to "
+            "communicate with Azure.\n"
+            "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"), force):
+            return False
+        if not check_installed("docker", 
+            ("Cannot find docker, which is needed to run the ez containers\n"
+            "https://hub.docker.com/editions/community/docker-ce-desktop-windows/"
+            ), force):
+            return False
+    elif platform.system() == "Darwin":
+        if not check_installed("az", 
+            ("The Azure Command Line Interface (CLI) must be installed to "
+            "communicate with Azure.\n"
+            "brew update && brew install azure-cli"), force):
+            return False
+        if not check_installed("docker", 
+            ("Cannot find docker, which is needed to run the ez containers\n"
+            "https://docs.docker.com/desktop/mac/apple-silicon/"
+            ), force):
+            return False
     if not check_installed("gh",
         ("Cannot find the GitHub CLI (gh), which is needed for interactions "
          "with GitHub. https://cli.github.com/manual/installation"), force):
