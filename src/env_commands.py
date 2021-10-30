@@ -2,7 +2,7 @@
 
 import click, glob, json, os, random, shutil, subprocess, uuid
 
-from azutil import (build_container_image, launch_vscode, pick_vm, 
+from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
     generate_vscode_project, is_gpu, jit_activate_vm, 
     get_active_compute_name, get_compute_size)
 from exec import exec_script_using_ssh, exec_command
@@ -433,7 +433,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         settings_json_path = f"{vscode_dir}/settings.json"
         if not os.path.exists(vscode_dir):
             os.mkdir(vscode_dir)
-        with open(settings_json_path, "wt+", encoding="utf-8") as f:
+        with open(settings_json_path, "w", encoding="utf-8") as f:
             f.write(settings_json)
     else:
         # local contrainer execution, so we need to generate a null 
@@ -496,7 +496,19 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
 """
 
     requires_gpu = ez_json["requires_gpu"]
-    if requires_gpu:
+
+    # Test whether the compute supports GPU or not
+    if compute_name == ".":
+        printf_err("todo local GPU detection")
+        compute_has_gpu = True # hard code for my computer
+    else:
+        vm_size = get_vm_size(ez, compute_name)
+        compute_has_gpu = is_gpu(vm_size)
+
+    if requires_gpu and not compute_has_gpu:
+        printf(f"warning: repo requires a GPU and {compute_name} "
+                "does not have one")
+    if requires_gpu and compute_has_gpu:
         runargs = """
         "--gpus=all",
         "--ipc=host",
@@ -523,7 +535,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
     if not os.path.exists(devcontainer_dir):
         os.mkdir(devcontainer_dir)
-    with open(devcontainer_json_path, "wt+", encoding="utf-8") as f:
+    with open(devcontainer_json_path, "w", encoding="utf-8") as f:
         f.write(devcontainer_json)
 
     # Generate the Dockerfile to be used by the project. The Dockerfile is
@@ -549,17 +561,36 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
 
     # Only generate a default Dockerfile if the user doesn't supply one in
     # their /build directory
-    if not os.path.exists(f"{devcontainer_dir}/Dockerfile"):
-        dockerfile = f"""
-FROM {ez_json["base_container_image"]}
-
+    if not os.path.exists(f"{local_env_path}/build/Dockerfile"):
+        # Need to generate build steps for cases where we have
+        # requirements.txt or an environment.yml file in the /build directory
+        if os.path.exists(f"{devcontainer_dir}/requirements.txt"):
+            pip_install = """
 COPY requirements.txt /tmp/requirements.txt
 WORKDIR /tmp
 RUN pip install -v -r requirements.txt
+"""
+        else:
+            pip_install = ""
+
+        if os.path.exists(f"{devcontainer_dir}/environment.yml"):
+            conda_install = """
+COPY environment.yml /tmp/environment.yml
+WORKDIR /tmp
+RUN conda env create -f environment.yml
+"""
+        else:
+            conda_install = ""
+
+        dockerfile = f"""
+FROM {ez_json["base_container_image"]}
+
+{pip_install}
+{conda_install}
     """
         printf("Generating default .devcontainer/Dockerfile")
         dockerfile_path = f"{devcontainer_dir}/Dockerfile"
-        with open(dockerfile_path, "wt+", encoding="utf-8") as f:
+        with open(dockerfile_path, "w", encoding="utf-8") as f:
             f.write(dockerfile)
 
     # If the resource group contains ACR, we could optionally build the 
@@ -588,6 +619,27 @@ RUN pip install -v -r requirements.txt
                 cwd=f"{local_env_path}/build",
                 log=True,
                 description="building container image using ACR Tasks")
+
+    # TODO: figure out how to copy these keys into the container AFTER the 
+    # container is running. I can't do this in build, and I don't want to
+    # because you don't want private keys copied into Docker images.
+
+    # Copy git SSH keys into the container 
+    if compute_name != ".":
+        ssh_dir = f"/home/{ez.user_name}/.ssh"
+        cmd = f"""
+docker cp {ssh_dir}/config /root/.ssh/config && \
+docker cp {ssh_dir}/id_rsa_github /root/.ssh/id_rsa_github && \
+docker cp {ssh_dir}/id_rsa_github.pub /root/.ssh/id_rsa_github.pub
+"""
+        result = exec_script_using_ssh(ez, 
+            compute_name, 
+            script_text=cmd, 
+            description="Configure SSH keys for GitHub",
+            line_by_line=True)
+    else:
+        # Handle local case
+        printf("handling local case")
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
