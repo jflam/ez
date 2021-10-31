@@ -9,9 +9,10 @@ import compute_commands
 import env_commands
 import workspace_commands
 
+from azutil import get_storage_account_key
 from exec import exec_command_return_dataframe
 from ez_state import Ez
-from formatting import printf_err
+from formatting import printf_err, printf
 from os import system
 from rich import print
 from rich.console import Console 
@@ -221,7 +222,62 @@ def init(ez: Ez):
             registry_name = df.iloc[choice][10]
             registry_region = df.iloc[choice][8]
 
-        print(f"Selected registry {registry_name} in {registry_region}")
+        if registry_name is not None:
+            printf(f"Selected registry {registry_name} in {registry_region}")
+
+        # Discover storage account
+        cmd = (f"az storage account list --resource-group "
+            f"{workspace_resource_group} -o tsv")
+        df = exec_command_return_dataframe(cmd)
+        count = df.shape[0]
+        if count == 0:
+            storage_account_name = ""
+        elif count == 1:
+            storage_account_name = df.iloc[0][26]
+        else:
+            for i, name in enumerate(df.iloc[:,1]):
+                print(f"{i} {name}")
+
+            while True:
+                choice = IntPrompt.ask("Enter storage account # to use", 
+                    default=-1)
+                if choice >= 0 and choice < df.shape[0]:
+                    break
+            
+            storage_account_name = df.iloc[choice][2]
+
+        if storage_account_name is not None:
+            printf(f"Selected storage account {storage_account_name}")
+
+        # Discover file share name
+        key = get_storage_account_key(ez, storage_account_name)
+        if key is None:
+            printf_err("Could not retrieve storage account key")
+            exit(1)
+
+        cmd = (f"az storage share list --account-name "
+            f"{storage_account_name} --account-key {key} -o tsv")
+        df = exec_command_return_dataframe(cmd)
+        count = df.shape[0]
+
+        if count == 0:
+            file_share_name = ""
+        elif count == 1:
+            file_share_name = df.iloc[0][1]
+        else:
+            for i, name in enumerate(df.iloc[:,2]):
+                print(f"{i} {name}")
+
+            while True:
+                choice = IntPrompt.ask("Enter storage account # to use", 
+                    default=-1)
+                if choice >= 0 and choice < df.shape[0]:
+                    break
+            
+            file_share_name = df.iloc[choice][1]
+        
+        if file_share_name is not None:
+            printf(f"Selected file share {file_share_name}")
 
     # Ask for username 
     print("\nStep 4/5: Select user account name to use for compute resources")
@@ -277,6 +333,8 @@ def init(ez: Ez):
     ez.workspace_name = workspace_name
     ez.resource_group = workspace_resource_group
     ez.registry_name = registry_name
+    ez.storage_account_name = storage_account_name
+    ez.file_share_name = file_share_name
     ez.subscription = subscription_id
     ez.region = workspace_region
     ez.private_key_path = keyfile_path
@@ -303,7 +361,7 @@ repo using it. Here's an example:
 1. Create a new ez compute VM. This will create a VM and install GPU
    drivers and Docker.
 
-ez compute create -n my-ez-gpu-vm -s Standard_NC6_Promo
+ez compute create -n ezgpu1 -s Standard_NC6_Promo
 
 2. Run a GitHub repo of notebooks using the VM you just created. This may
    take a while to generate the Docker container image needed to run that 

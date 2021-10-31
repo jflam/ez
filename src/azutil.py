@@ -611,3 +611,14 @@ def pick_vm(resource_group, show_gpu_only=False):
 
     # Return the VM name to caller
     return df.iloc[choice]["Name"]
+
+def get_storage_account_key(ez: Ez, storage_account_name: str):
+    """Retrieve storage account key for current account"""
+    cmd = (f"az storage account keys list --resource-group "
+        f"{ez.resource_group} --account-name {storage_account_name} "
+        f"--query \"[0].value\" --output json")
+    
+    result = exec_command(ez, 
+        cmd, description="retrieving storage account key")
+    key = result[1].strip().strip('"')
+    return key
