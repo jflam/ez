@@ -18,6 +18,7 @@ class Ez(object):
     workspace_name: str
     resource_group: str
     registry_name: str
+    storage_account_name: str
     subscription: str
     region: str
     private_key_path: str
@@ -58,6 +59,7 @@ class Ez(object):
             self.workspace_name = ez_config["workspace_name"]
             self.resource_group = ez_config["resource_group"]
             self.registry_name = ez_config["registry_name"]
+            self.storage_account_name = ez_config["storage_account_name"]
             self.subscription = ez_config["subscription"]
             self.region = ez_config["region"]
             self.private_key_path = ez_config["private_key_path"]
@@ -87,6 +89,7 @@ class Ez(object):
             "workspace_name": self.workspace_name,
             "resource_group": self.resource_group,
             "registry_name": self.registry_name,
+            "storage_account_name": self.storage_account_name,
             "subscription": self.subscription,
             "region": self.region,
             "private_key_path": self.private_key_path,
