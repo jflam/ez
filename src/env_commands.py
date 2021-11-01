@@ -516,12 +516,22 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     else:
         runargs = ""
 
+    if ez.file_share_name is not None:
+        mounts = f"""
+    "mounts": [
+        "source=/home/{ez.user_name}/data,target=/data,type=bind,consistency=cached",
+    ],
+"""
+    else:
+        mounts = ""
+
     devcontainer_json = f"""
 {{
     {docker_source}
     "containerUser": "root",
     "workspaceFolder": "/workspace",
     "workspaceMount": "source={mount_path},target=/workspace,type=bind,consistency=cached",
+    {mounts}
     "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance"
