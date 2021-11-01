@@ -312,43 +312,6 @@ def up(ez: Ez, compute_name, env_name):
     exit(0)
 
 @click.command()
-@click.pass_obj
-def mount(ez: Ez):
-    # TODO: parameterize these
-    storage_account_name = "jflamezstorage"
-    fileshare_name = "ezdata"
-    compute_name = ez.active_remote_compute
-    mount_path = f"/home/{ez.user_name}/src/riiid-acp-pub/input/share"
-
-    # Get the HTTP endpoint for the storage accoun t
-    cmd = (f"az storage account show --resource-group {ez.resource_group} "
-        f"--name {storage_account_name} --query 'primaryEndpoints.file' "
-        f"--output json")
-    
-    result = exec_command(ez, cmd, description="retrieving storage endpoint")
-    https_endpoint = result[1].strip().strip('"')
-    smb_path = f"{https_endpoint}{fileshare_name}"
-    # TODO: calc but hardcode for now
-    smb_path = f"{storage_account_name}.file.core.windows.net/{fileshare_name}"
-
-    # Retrieve the storage account key
-    cmd = (f"az storage account keys list --resource-group "
-        f"{ez.resource_group} --account-name {storage_account_name} "
-        f"--query \"[0].value\" --output json")
-    
-    result = exec_command(ez, 
-        cmd, description="retrieving storage account key")
-    key = result[1].strip().strip('"')
-
-    # Use the storage account key to mount the storage into the container
-    cmd = (f"sudo mount -t cifs //{smb_path} {mount_path} "
-        f"-o username={storage_account_name},password={key},serverino,"
-        f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
-    result = exec_script_using_ssh(ez, compute_name, script_text=cmd, 
-        description="mounting Azure File share onto remote compute")
-    print(result)
-
-@click.command()
 @click.option("--git-uri", "-g", required=True, 
               help="URI of git repo to load in the environment")
 @click.option("--compute-name", "-c", required=False,

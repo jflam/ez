@@ -6,7 +6,8 @@ import json
 import subprocess
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
-    jit_activate_vm, get_vm_size, get_active_compute_name)
+    jit_activate_vm, get_vm_size, get_active_compute_name, 
+    mount_storage_account)
 from exec import exec_script_using_ssh, exec_command
 from ez_state import Ez
 from fabric import Connection
@@ -446,3 +447,22 @@ def info(ez: Ez, compute_name):
     else:
         printf_err(out)
     exit(retcode)
+
+@click.command()
+@click.option("--compute-name", "-c", required=False,
+              help="Compute name to migrate the environment to")
+@click.pass_obj
+def mount(ez: Ez, compute_name: str):
+    """Mount the workspace file share onto the compute and storage"""
+    if compute_name is None:
+        compute_name = ez.active_remote_compute
+
+    # TODO: figure out whether to mount onto VM or onto each env
+    # TODO: figure out where to mount - for now let's call it data
+    # mount_path = f"/home/{ez.user_name}/src/{env_name}/data"
+    mount_path = f"/home/{ez.user_name}/data"
+
+    if mount_storage_account(ez, compute_name, mount_path):
+        exit(0)
+    else:
+        exit(1)

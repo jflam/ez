@@ -417,6 +417,7 @@ compute.add_command(compute_commands.ssh)
 compute.add_command(compute_commands.update_system)
 compute.add_command(compute_commands.enable_acr)
 compute.add_command(compute_commands.enable_github)
+compute.add_command(compute_commands.mount)
 
 # environment sub-commands
 
@@ -432,4 +433,3 @@ env.add_command(env_commands.ssh)
 env.add_command(env_commands.stop)
 env.add_command(env_commands.up)
 env.add_command(env_commands.go)
-env.add_command(env_commands.mount)
