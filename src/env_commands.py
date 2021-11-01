@@ -140,7 +140,7 @@ ez env cp <source> <dest>
 The format of <source> and <dest> are important. Examples:
 
 \b
-foo.txt :.               Copy foo.txt to active environment /workspace dir
+foo.txt :.               Copy foo.txt to active environment /code dir
 foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
 :/remote/path/foo.txt .  Copy active environment /remote/path/foo.txt locally
 ./*.txt :/remote/path    Copy local .txt files to active environment /remote/path
@@ -172,13 +172,13 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
     elif src.startswith(":"):
         cmd = (f"scp -i {ez.private_key_path} {ez.user_name}@"
                f"{ez.active_remote_compute}.{ez.region}"
-               f".cloudapp.azure.com:/home/{ez.user_name}/src/"
+               f".cloudapp.azure.com:/home/{ez.user_name}/code/"
                f"{ez.active_remote_env}/{src[1:]} {dest}") 
         subprocess.run(cmd.split(" "))
     elif dest.startswith(":"):
         cmd = (f"scp -i {ez.private_key_path} {src} {ez.user_name}@"
                f"{ez.active_remote_compute}.{ez.region}"
-               f".cloudapp.azure.com:/home/{ez.user_name}/src/"
+               f".cloudapp.azure.com:/home/{ez.user_name}/code/"
                f"{ez.active_remote_env}/{dest[1:]}") 
         subprocess.run(cmd.split(" "))
     else:
@@ -234,13 +234,13 @@ def ssh(ez: Ez, compute_name, env_name):
         # Open a tunneled SSH connection into the running remote container
         cmd = (f"ssh -tt -i {ez.private_key_path} "
             f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com "
-            f"docker exec -it -w /workspace {container_id} /bin/bash")
+            f"docker exec -it -w /code {container_id} /bin/bash")
         printf(f"opened SSH connection to container {container_id} running "
             f"using image {image_name} on "
             f"{compute_name}.{ez.region}.cloudapp.azure.com")
     else:
         # Handle the local case
-        cmd = f"docker exec -it -w /workspace {container_id} /bin/bash"
+        cmd = f"docker exec -it -w /code {container_id} /bin/bash"
         printf(f"opened SSH connection to container {container_id} running "
                f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
@@ -388,7 +388,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
 
         # TODO: Start the remote compute if necessary. Wait for it to complete
         # starting
-        remote_env_path = f"/home/{ez.user_name}/src/{env_name}"
+        remote_env_path = f"/home/{ez.user_name}/code/{env_name}"
 
         # In the remote case, it needs to conditionally clone the git repo
         # onto the remote VM. If the repo was already cloned on the VM, then
