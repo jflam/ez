@@ -260,11 +260,11 @@ def __enable_github(ez: Ez,
                        f"SHA256 hash is {C.GITHUB_PUBLIC_KEY_SHA256}.")
             exit(1)
 
-    gh_config = """
+    gh_config = f"""
 Host github.com
     HostName github.com
     AddKeysToAgent yes
-    IdentityFile ~/.ssh/id_rsa_github
+    IdentityFile /home/{ez.user_name}/.ssh/id_rsa_github
 """
     # Write locally
     with open("/tmp/gh_config", "w") as f:
