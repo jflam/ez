@@ -21,6 +21,7 @@ def exec_command(ez: Ez,
                  stdin: str=None) -> Tuple[int, str]:
     """Shell execute command and optionally log output incrementally."""
     description = format_output_string(description)
+    completed = format_output_string(f"completed: {description}")
     command_array = shlex.split(command)
     is_ssh = command_array[0].lower() == "ssh"
     if input_file_path is not None:
@@ -74,6 +75,7 @@ def exec_command(ez: Ez,
             printf(f"... during execution of: {command}")
             exit(p.returncode)
         
+        progress.update(t, description=completed)
         return (p.returncode, "\n".join(output))
     
 # Use fabric to exec script
