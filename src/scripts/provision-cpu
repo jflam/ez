@@ -5,16 +5,16 @@
 # Note that any bash variables set by this script need to be used from the 
 # same logical line, i.e., they need to be concatenated using the && operator
 
-## UPDATE system software
+## UPDATING system software
 sudo apt update
 sudo apt upgrade -y
 
-## INSTALL build-essential
+## INSTALLING build-essential
 sudo apt install build-essential -y
 
-## INSTALL Docker
+## INSTALLING Docker
 curl https://get.docker.com | sh && sudo systemctl --now enable docker
 
-## CONFIGURE Docker to run without sudo
+## CONFIGURING Docker to run without sudo
 # https://docs.docker.com/engine/install/linux-postinstall/
 sudo usermod -aG docker $USER

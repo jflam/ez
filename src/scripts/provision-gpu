@@ -5,14 +5,14 @@
 # Note that any bash variables set by this script need to be used from the 
 # same logical line, i.e., they need to be concatenated using the && operator
 
-## UPDATE system software
+## UPDATING system software
 sudo apt update
 sudo apt upgrade -y
 
-## INSTALL build-essential
+## INSTALLING build-essential
 sudo apt install build-essential -y
 
-## INSTALL cuda-drivers
+## INSTALLING cuda-drivers
 # https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
 
 # Ensure packages from CUDA repo have precedence over Canonical repo
@@ -30,10 +30,10 @@ sudo apt install -y cuda-drivers
 # Install Docker with CUDA support
 # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 
-## INSTALL Docker
+## INSTALLING Docker
 curl https://get.docker.com | sh && sudo systemctl --now enable docker
 
-## INSTALL nvidia-docker2
+## INSTALLING nvidia-docker2
 # Update repository links
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
    && curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - \
@@ -43,7 +43,7 @@ distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
 sudo apt update
 sudo apt install -y nvidia-docker2
 
-## CONFIGURE Docker to run without sudo
+## CONFIGURING Docker to run without sudo
 # https://docs.docker.com/engine/install/linux-postinstall/
 sudo usermod -aG docker $USER
 
