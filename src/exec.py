@@ -157,6 +157,8 @@ def exec_script_using_ssh(ez: Ez,
                 c.run(current_line, warn=True)
                 i += 1
 
+            progress.update(t, description=format_output_string(
+                f"completed: {task_name}"), completed=100)
             progress.console.bell()
 
             # Complete - reboot if needed
