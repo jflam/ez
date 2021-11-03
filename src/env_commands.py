@@ -382,6 +382,87 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         # TODO: generate
         exit(1)
 
+    devcontainer_dir = f"{local_env_path}/.devcontainer"
+    devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
+    if not os.path.exists(devcontainer_dir):
+        os.mkdir(devcontainer_dir)
+
+    # Generate the Dockerfile to be used by the project. The Dockerfile is
+    # generated at launch time, and will have comments in it that will say
+    # that it is machine-generated. Furthermore, the Dockerfile should be
+    # excluded from the GH repo via .gitignore so that it doesn't pollute the
+    # git history of the project. The Dockerfile will be generated and placed
+    # in the .devcontainer directory locally or scp'd to the remote machine in
+    # the well-known place where the cloned repo is stored:
+    # /home/<ezuser>/ez/<GH repo name>
+
+    # To generate the Dockerfile, information will be needed from the repo.
+    # This first version of the command will just clone the repo into the
+    # surrogate project directory. A future optimization may avoid the need to
+    # clone the project locally as well.
+
+    # Copy files from the /build directory into the .devcontainer directory
+    # printf("Copying /build files to /.devcontainer")
+    build_files = glob.glob(f"{local_env_path}/build/*")
+    for file in build_files:
+        if os.path.isfile(file):
+            shutil.copy(file, devcontainer_dir)
+
+    # Only generate a default Dockerfile if the user doesn't supply one in
+    # their /build directory
+    if not os.path.exists(f"{local_env_path}/build/Dockerfile"):
+        # Need to generate build steps for cases where we have
+        # requirements.txt or an environment.yml file in the /build directory
+        if os.path.exists(f"{devcontainer_dir}/requirements.txt"):
+            pip_install = """
+COPY requirements.txt /tmp/requirements.txt
+WORKDIR /tmp
+RUN pip install -v -r requirements.txt
+"""
+        else:
+            pip_install = ""
+
+        if os.path.exists(f"{devcontainer_dir}/environment.yml"):
+            conda_install = """
+COPY environment.yml /tmp/environment.yml
+WORKDIR /tmp
+RUN conda env create -f environment.yml
+"""
+        else:
+            conda_install = ""
+
+        dockerfile = f"""
+FROM {ez_json["base_container_image"]}
+
+{pip_install}
+{conda_install}
+    """
+        # printf("Generating default .devcontainer/Dockerfile")
+        dockerfile_path = f"{devcontainer_dir}/Dockerfile"
+        with open(dockerfile_path, "w", encoding="utf-8") as f:
+            f.write(dockerfile)
+
+    # Build the image using an ACR task if the --use-acr flag was set
+    if use_acr:
+        full_registry_name = (f"{ez.registry_name}.azurecr.io/"
+                              f"{ez.workspace_name}:{env_name}")
+        cmd = f"docker manifest inspect {full_registry_name}"
+        result, _ = exec_command(ez, 
+            cmd, 
+            description=f"checking if {full_registry_name} exists")
+
+        # Returns 0 if image already exists, 1 if it does not
+        if result == 0:
+            printf(f"Skipping build, {full_registry_name} exists already")
+        else:
+            cmd = (f"az acr build --registry {ez.registry_name} "
+                f"--image {ez.workspace_name}:{env_name} .")
+            exec_command(ez, 
+                cmd, 
+                cwd=f"{local_env_path}/build",
+                log=True,
+                description="building container image using ACR Tasks")
+
     if compute_name != ".":
         # Check to see if the remote compute has the GPU capability if needed
         # and fail if it doesn't.
@@ -421,7 +502,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         # contains "docker.host":
         # "ssh://user@machine.region.cloudapp.azure.com"
 
-        printf("Generating .vscode/settings.json")
+        # printf("Generating .vscode/settings.json")
         ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}"
                           ".cloudapp.azure.com")
         settings_json = f"""
@@ -465,7 +546,7 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # Those files could all be run from the /build directory as well with
     # a hand-written Dockerfile
 
-    printf("Generating .devcontainer/devcontainer.json")
+    # printf("Generating .devcontainer/devcontainer.json")
     if compute_name == ".":
         mount_path = local_env_path
     else:
@@ -541,115 +622,34 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     ],
 }}
 """
-    devcontainer_dir = f"{local_env_path}/.devcontainer"
-    devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
-    if not os.path.exists(devcontainer_dir):
-        os.mkdir(devcontainer_dir)
     with open(devcontainer_json_path, "w", encoding="utf-8") as f:
         f.write(devcontainer_json)
-
-    # Generate the Dockerfile to be used by the project. The Dockerfile is
-    # generated at launch time, and will have comments in it that will say
-    # that it is machine-generated. Furthermore, the Dockerfile should be
-    # excluded from the GH repo via .gitignore so that it doesn't pollute the
-    # git history of the project. The Dockerfile will be generated and placed
-    # in the .devcontainer directory locally or scp'd to the remote machine in
-    # the well-known place where the cloned repo is stored:
-    # /home/<ezuser>/ez/<GH repo name>
-
-    # To generate the Dockerfile, information will be needed from the repo.
-    # This first version of the command will just clone the repo into the
-    # surrogate project directory. A future optimization may avoid the need to
-    # clone the project locally as well.
-
-    # Copy files from the /build directory into the .devcontainer directory
-    printf("Copying /build files to /.devcontainer")
-    build_files = glob.glob(f"{local_env_path}/build/*")
-    for file in build_files:
-        if os.path.isfile(file):
-            shutil.copy(file, devcontainer_dir)
-
-    # Only generate a default Dockerfile if the user doesn't supply one in
-    # their /build directory
-    if not os.path.exists(f"{local_env_path}/build/Dockerfile"):
-        # Need to generate build steps for cases where we have
-        # requirements.txt or an environment.yml file in the /build directory
-        if os.path.exists(f"{devcontainer_dir}/requirements.txt"):
-            pip_install = """
-COPY requirements.txt /tmp/requirements.txt
-WORKDIR /tmp
-RUN pip install -v -r requirements.txt
-"""
-        else:
-            pip_install = ""
-
-        if os.path.exists(f"{devcontainer_dir}/environment.yml"):
-            conda_install = """
-COPY environment.yml /tmp/environment.yml
-WORKDIR /tmp
-RUN conda env create -f environment.yml
-"""
-        else:
-            conda_install = ""
-
-        dockerfile = f"""
-FROM {ez_json["base_container_image"]}
-
-{pip_install}
-{conda_install}
-    """
-        printf("Generating default .devcontainer/Dockerfile")
-        dockerfile_path = f"{devcontainer_dir}/Dockerfile"
-        with open(dockerfile_path, "w", encoding="utf-8") as f:
-            f.write(dockerfile)
-
-    # If the resource group contains ACR, we could optionally build the 
-    # docker image there and import it. Sample command:
-    #
-    # az acr build --registry jflamregistry --image wine . 
-    if use_acr and build:
-        # TODO: only build if it isn't in the registry already
-        # probably need a --force-build switch to force this happening too
-        full_registry_name = (f"{ez.registry_name}.azurecr.io/"
-                              f"{ez.workspace_name}")
-        cmd = f"docker images {full_registry_name}"
-        result = exec_command(ez, 
-            cmd, 
-            log=True, 
-            description=f"checking if {full_registry_name} exists")
-        if result[0] != 0:
-            exit(1)
-        if result[1].find(full_registry_name):
-            printf(f"Skipping build, {full_registry_name} exists already")
-        else:
-            cmd = (f"az acr build --registry {ez.registry_name} "
-                f"--image {env_name} .")
-            exec_command(ez, 
-                cmd, 
-                cwd=f"{local_env_path}/build",
-                log=True,
-                description="building container image using ACR Tasks")
 
     # TODO: figure out how to copy these keys into the container AFTER the 
     # container is running. I can't do this in build, and I don't want to
     # because you don't want private keys copied into Docker images.
 
+    # TODO: I think that I can get this to work by mapping the host machine
+    # ~/.ssh directory containing the SSH keys into the container's 
+    # /root/.ssh directory. This requires adding a mount command to the
+    # devcontainer.json file.
+
     # Copy git SSH keys into the container 
-    if compute_name != ".":
-        ssh_dir = f"/home/{ez.user_name}/.ssh"
-        cmd = f"""
-docker cp {ssh_dir}/config /root/.ssh/config && \
-docker cp {ssh_dir}/id_rsa_github /root/.ssh/id_rsa_github && \
-docker cp {ssh_dir}/id_rsa_github.pub /root/.ssh/id_rsa_github.pub
-"""
-        result = exec_script_using_ssh(ez, 
-            compute_name, 
-            script_text=cmd, 
-            description="Configure SSH keys for GitHub",
-            line_by_line=True)
-    else:
-        # Handle local case
-        printf("handling local case")
+#     if compute_name != ".":
+#         ssh_dir = f"/home/{ez.user_name}/.ssh"
+#         cmd = f"""
+# docker cp {ssh_dir}/config /root/.ssh/config && \
+# docker cp {ssh_dir}/id_rsa_github /root/.ssh/id_rsa_github && \
+# docker cp {ssh_dir}/id_rsa_github.pub /root/.ssh/id_rsa_github.pub
+# """
+#         result = exec_script_using_ssh(ez, 
+#             compute_name, 
+#             script_text=cmd, 
+#             description="Configure SSH keys for GitHub",
+#             line_by_line=True)
+#     else:
+#         # Handle local case
+#         printf("handling local case")
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
