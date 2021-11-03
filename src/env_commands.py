@@ -220,13 +220,10 @@ def ssh(ez: Ez, compute_name, env_name):
         # Run a local docker ps command to get the container id
         cmd = "docker ps --format {{.Image}},{{.ID}}"
     result = subprocess.run(cmd.split(' '), capture_output=True)
-    containers = result.stdout.decode("utf-8").split("\n")
-    active_container_name = f"vsc-{env_name}-"
-    vsc_containers = [c for c in containers if c.startswith(
-                                                    active_container_name)]
+    containers = result.stdout.decode("utf-8").strip().split("\n")
+    vsc_containers = [c for c in containers if env_name in c]
     if len(vsc_containers) != 1:
         printf_err(f">1 container running with same env_name:")
-        print(vsc_containers)
         exit(1)
 
     image_name, container_id = vsc_containers[0].split(",")
@@ -234,13 +231,13 @@ def ssh(ez: Ez, compute_name, env_name):
         # Open a tunneled SSH connection into the running remote container
         cmd = (f"ssh -tt -i {ez.private_key_path} "
             f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com "
-            f"docker exec -it -w /code {container_id} /bin/bash")
+            f"docker exec -it -w /workspace {container_id} /bin/bash")
         printf(f"opened SSH connection to container {container_id} running "
             f"using image {image_name} on "
             f"{compute_name}.{ez.region}.cloudapp.azure.com")
     else:
         # Handle the local case
-        cmd = f"docker exec -it -w /code {container_id} /bin/bash"
+        cmd = f"docker exec -it -w /workspace {container_id} /bin/bash"
         printf(f"opened SSH connection to container {container_id} running "
                f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
@@ -449,6 +446,7 @@ FROM {ez_json["base_container_image"]}
         cmd = f"docker manifest inspect {full_registry_name}"
         result, _ = exec_command(ez, 
             cmd, 
+            terminate_on_error=False,
             description=f"checking if {full_registry_name} exists")
 
         # Returns 0 if image already exists, 1 if it does not
@@ -459,7 +457,7 @@ FROM {ez_json["base_container_image"]}
                 f"--image {ez.workspace_name}:{env_name} .")
             exec_command(ez, 
                 cmd, 
-                cwd=f"{local_env_path}/build",
+                cwd=devcontainer_dir,
                 log=True,
                 description="building container image using ACR Tasks")
 
