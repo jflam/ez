@@ -10,7 +10,7 @@ import env_commands
 import workspace_commands
 
 from azutil import get_storage_account_key
-from exec import exec_command_return_dataframe
+from exec import exec_command_return_dataframe, exec_command
 from ez_state import Ez
 from formatting import printf_err, printf
 from os import system
@@ -165,33 +165,66 @@ def init(ez: Ez):
             if choice >= 0 and choice < df.shape[0]:
                 break
 
-        workspace_region = df.iloc[choice][1]
-
-        print(f"Creating {workspace_resource_group} "
-              f"in region {workspace_region}")
+        workspace_region = df.iloc[choice][3]
 
         # Create the resource group
-        cmd = (f"az group create --location {workspace_region}" 
-            f"--name {workspace_resource_group}")
-        result = subprocess.run(cmd.split(' '))
-        if result.returncode != 0:
+        cmd = (f"az group create --location {workspace_region} " 
+            f"--resource-group {workspace_resource_group}")
+        result, _ = exec_command(ez, cmd, description=
+            f"creating {workspace_resource_group} in {workspace_region}")
+        if result != 0:
             print(f"Azure resource group creation failed "
-                  f"with return code {result.returncode}")
-            exit(result.returncode)
+                  f"with return code {result}")
+            exit(result)
 
         # Ask to create an Azure Container Registry
-        choice = Prompt.ask("Create an Azure Container Registry? (blank "
-                            "name will not create one)", default="")
+        choice = Prompt.ask("Name of Azure Container Registry to create? "
+                    "(blank will not create one; name cannot have dashes "
+                    "earn it)", default="")
         if choice != "":
             registry_name = choice
-            cmd = (f"az acr create --resource-group {workspace_resource_group}"
-                   f"--name {registry_name} --sku Basic")
-            result = subprocess.run(cmd.split(' '))
-            if result.returncode != 0:
+            cmd = (f"az acr create --resource-group "
+                f"{workspace_resource_group} --name {registry_name} "
+                f"--sku Premium")
+            result, _ = exec_command(ez, cmd, description=
+                f"Creating Premium Azure Container Registry {registry_name}")
+            if result != 0:
                 print(f"Azure Container Registry creation failed "
-                      f"with return code {result.returncode}")
-                exit(result.returncode)
+                      f"with return code {result}")
+                exit(result)
 
+        # Ask to create an Azure Storage Account
+        choice = Prompt.ask("Name of Azure Storage Account to create? (blank "
+            "name will not create one; name cannot have dashes in it)", 
+            default="")
+        if choice != "":
+            storage_account_name = choice
+            cmd = (f"az storage account create --name {storage_account_name} "
+                f"--resource-group {workspace_resource_group}")
+            result, _ = exec_command(ez, cmd, description=
+                f"Creating Azure Storage Account {storage_account_name}")
+            if result != 0:
+                print(f"Azure Storage Account creation failed "
+                      f"with return code {result}")
+                exit(result)
+
+            # Create file share
+            choice = Prompt.ask("Create an Azure File Share?", 
+                default="ezdata")
+            if choice == "":
+                printf_err("Must create an Azure File Share when creating "
+                    "an Azure Storage Account")
+                exit(1)
+            else:
+                file_share_name = choice
+                cmd = (f"az storage share-rm create --name {file_share_name} "
+                    f"--quota 512 --storage-account {storage_account_name}")
+                result, _ = exec_command(ez, cmd, description=
+                    f"Creating Azure File Share {file_share_name}")
+                if result != 0:
+                    printf_err("Azure File Share creation failed "
+                        f"with return code {result}")
+                    exit(result)
     else:
         workspace_resource_group = df.iloc[choice][3]
         workspace_region = df.iloc[choice][1]
