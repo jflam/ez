@@ -12,9 +12,13 @@ from rich.progress import (Progress, SpinnerColumn, TextColumn,
     TimeElapsedColumn)
 from typing import Tuple
 
+# TODO: a single method that handles local and remote as well to unify 
+# code.
+
 def exec_command(ez: Ez, 
                  command: str, 
                  log: bool=False, 
+                 terminate_on_error: bool=True,
                  description: str="", 
                  input_file_path: str=None,
                  cwd: str=None,
@@ -64,16 +68,17 @@ def exec_command(ez: Ez,
         progress.console.bell()
         description = format_output_string(f"completed: {description}")
         progress.update(t, description=description)
-        if is_ssh and p.returncode == 255:
-            stderr = (p.stderr.read().decode('utf-8'))
-            printf_err(f"({p.returncode}) {stderr}")
-            printf(f"... during execution of: {command}")
-            exit(p.returncode)
-        elif not is_ssh and p.returncode != 0:
-            stderr = (p.stderr.read().decode('utf-8'))
-            printf_err(f"({p.returncode}) {stderr}")
-            printf(f"... during execution of: {command}")
-            exit(p.returncode)
+        if terminate_on_error:
+            if is_ssh and p.returncode == 255:
+                stderr = (p.stderr.read().decode('utf-8'))
+                printf_err(f"({p.returncode}) {stderr}")
+                printf(f"... during execution of: {command}")
+                exit(p.returncode)
+            elif not is_ssh and p.returncode != 0:
+                stderr = (p.stderr.read().decode('utf-8'))
+                printf_err(f"({p.returncode}) {stderr}")
+                printf(f"... during execution of: {command}")
+                exit(p.returncode)
         
         progress.update(t, description=completed)
         return (p.returncode, "\n".join(output))
