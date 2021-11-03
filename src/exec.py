@@ -126,6 +126,7 @@ def exec_script_using_ssh(ez: Ez,
         if line_by_line:
             # Process line by line and 
             i = 0
+            t = 0
             while i < len(lines):
                 current_line = lines[i].strip()
                 if current_line == "":
