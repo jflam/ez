@@ -4,7 +4,7 @@ import click, glob, json, os, random, shutil, subprocess, uuid
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
     generate_vscode_project, is_gpu, jit_activate_vm, 
-    get_active_compute_name, get_compute_size)
+    get_active_compute_name, get_compute_size, mount_storage_account)
 from exec import exec_script_using_ssh, exec_command
 from ez_state import Ez
 from formatting import printf, printf_err
@@ -648,6 +648,11 @@ FROM {ez_json["base_container_image"]}
 #     else:
 #         # Handle local case
 #         printf("handling local case")
+
+    # Mount /data drive
+    mount_path = f"/home/{ez.user_name}/data"
+    if mount_storage_account(ez, compute_name, mount_path):
+        exit(0)
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
