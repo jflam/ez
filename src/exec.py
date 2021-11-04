@@ -12,8 +12,59 @@ from rich.progress import (Progress, SpinnerColumn, TextColumn,
     TimeElapsedColumn)
 from typing import Tuple
 
-# TODO: a single method that handles local and remote as well to unify 
-# code.
+# TODO: a single method that handles local and remote as well to unify code.
+
+def exec_cmd_local(
+    cmd: str,
+    cwd: str=None,
+) -> Tuple[int, str, str]:
+    """Execute a command locally"""
+    result = subprocess.run(cmd, cwd=cwd, check=False, shell=True, 
+        capture_output=True)
+    return (result.returncode, 
+        result.stdout.decode("utf8").strip(), 
+        result.stderr.decode("utf8").strip())
+
+def exec_cmd_remote(
+    cmd: str,
+    uri: str,
+    private_key_path: str,
+    cwd: str=None,
+) -> Tuple[int, str, str]:
+    connect_args={
+        "key_filename": [private_key_path]
+    }
+    c = Connection(uri, connect_kwargs=connect_args)
+    # with Connection(uri, connect_kwargs=connect_args) as c:
+    if cwd is not None:
+        c.cd(cwd)
+    result = c.run(cmd)
+    return (result.exited, 
+        result.stdout.strip(), 
+        result.stderr.strip())
+
+    # return exec_cmd_remote_line(c, cmd)
+
+def exec_cmd_remote_line(
+    connection: Connection,
+    cmd: str,
+    warn: bool=True,
+) -> Tuple[int, str, str]:
+    """Execute a single command on the remote machine within a context"""
+    result = connection.run(cmd, warn=warn)
+    return (result.exited, 
+        result.stdout.decode("utf8").strip(), 
+        result.stderr.decode("utf8").strip())
+
+def internal_exec_cmd(
+    command: str,
+    target_compute: str=".",
+    cwd: str=None):
+    """Internal method to execute a command on the target"""
+    pass
+
+# TODO: an internal method that we test separately from one that wraps
+# functionality like logging, formatting, progress, status etc.
 
 def exec_command(ez: Ez, 
                  command: str, 
