@@ -20,6 +20,24 @@ def test_exec_cmd(monkeypatch):
     assert exit_code == 0
     assert stdout == "Linux"
 
+def test_exec_multi_cmd(monkeypatch):
+    monkeypatch.setattr('sys.stdin', open("/dev/null"))
+    cmds = ["uname", "uname -n"]
+    results = exec_cmd(cmds)
+    assert results[0][0] == 0
+    assert results[0][1] == platform.system()
+    assert results[1][0] == 0
+    assert results[1][1] == platform.node()
+
+def test_exec_multi_cmd_remote(monkeypatch):
+    monkeypatch.setattr('sys.stdin', open("/dev/null"))
+    cmds = ["uname", "uname -n"]
+    results = exec_cmd(cmds, TEST_URI, TEST_KEY)
+    assert results[0][0] == 0
+    assert results[0][1] == "Linux"
+    assert results[1][0] == 0
+    print(results[1][1])
+
 # Lower level tests for the underlying local and remote exec functions
 
 def test_local_cmd_success():
@@ -41,7 +59,6 @@ def test_local_cmd_cwd():
     assert exit_code == 0
     exit_code, _, _ = exec_cmd_local("test -d zzwy", cwd="/usr")
     assert exit_code == 1
-
 
 def test_remote_cmd_success(monkeypatch):
     monkeypatch.setattr('sys.stdin', open("/dev/null"))

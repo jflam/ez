@@ -11,22 +11,45 @@ from invoke.exceptions import UnexpectedExit
 from rich.console import Console
 from rich.progress import (Progress, SpinnerColumn, TextColumn, 
     TimeElapsedColumn)
-from typing import Tuple
+from typing import Tuple, Union
 
 # TODO: a single method that handles local and remote as well to unify code.
 
 def exec_cmd(
-    cmd: str,
+    cmd: Union[str, list[str]],
     uri: str=None,
     private_key_path: str=None,
+    description: str=None,
     cwd: str=None,
 ) -> Tuple[int, str, str]:
+
+    # Description sets up a master context for showing things
+    if description is not None:
+        description = format_output_string(description)
+
     if uri is None:
         return exec_cmd_local(cmd, cwd)
     else:
         return exec_cmd_remote(cmd, uri, private_key_path, cwd)
 
+    # Down here we will clean up the master context
+
 def exec_cmd_local(
+    cmd: Union[str, list[str]],
+    cwd: str=None,
+) -> Union[Tuple[int, str, str], list[Tuple[int, str, str]]]: 
+    """Execute cmd or list[cmd] locally in cwd"""
+    if type(cmd) is str:
+        return exec_single_cmd_local(cmd, cwd)
+    elif type(cmd) is list:
+        result = []
+        for c in cmd:
+            result.append(exec_single_cmd_local(c, cwd))
+        return result
+    else:
+        raise TypeError("cmd must be str or list[str]")
+
+def exec_single_cmd_local(
     cmd: str,
     cwd: str=None,
 ) -> Tuple[int, str, str]:
@@ -38,7 +61,7 @@ def exec_cmd_local(
         result.stderr.decode("utf8").strip())
 
 def exec_cmd_remote(
-    cmd: str,
+    cmd: Union[str, list[str]],
     uri: str,
     private_key_path: str,
     cwd: str=None,
@@ -47,12 +70,20 @@ def exec_cmd_remote(
     connect_args={
         "key_filename": [private_key_path]
     }
-    with Connection(uri, connect_kwargs=connect_args) as c:
+    with Connection(uri, connect_kwargs=connect_args) as connection:
         if cwd is not None:
-            c.cd(cwd)
-        return exec_cmd_remote_line(c, cmd)
+            connection.cd(cwd)
+        if type(cmd) is str:
+            return exec_single_cmd_remote(connection, cmd)
+        elif type(cmd) is list:
+            result = []
+            for c in cmd:
+                result.append(exec_single_cmd_remote(connection, c))
+            return result
+        else:
+            raise TypeError("cmd must be str or list[str]")
 
-def exec_cmd_remote_line(
+def exec_single_cmd_remote(
     connection: Connection,
     cmd: str,
 ) -> Tuple[int, str, str]:
