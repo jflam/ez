@@ -1,4 +1,4 @@
-import os, platform 
+import os, platform, pytest
 from exec import exec_cmd_local, exec_cmd_remote, exec_cmd
 
 # Tests below use a test vm called eztestvm that must be started first before
@@ -6,8 +6,16 @@ from exec import exec_cmd_local, exec_cmd_remote, exec_cmd
 #
 # ez compute create -n eztestvm -s Standard_B1s
 
-TEST_URI = "ezuser@eztestvm.southcentralus.cloudapp.azure.com"
+TEST_USER = "ezuser"
+TEST_HOST = "eztestvm.southcentralus.cloudapp.azure.com"
+TEST_URI = f"{TEST_USER}@{TEST_HOST}"
 TEST_KEY = os.path.expanduser("~/.ssh/id_rsa_azure")
+
+def test_remote_vm_online(monkeypatch):
+    monkeypatch.setattr('sys.stdin', open("/dev/null"))
+    exit_code, _, _ = exec_cmd(f"nc -z {TEST_HOST} 22 > /dev/null")
+    if exit_code != 0:
+        pytest.exit(f"These tests require {TEST_HOST} to be running")
 
 # Higher level tests for the main 
 def test_exec_cmd(monkeypatch):
@@ -37,6 +45,14 @@ def test_exec_multi_cmd_remote(monkeypatch):
     assert results[0][1] == "Linux"
     assert results[1][0] == 0
     print(results[1][1])
+
+# Note that this test cannot validate the output that the rich generates (the
+# pretty progress panel) ... it just validates that the changes made to
+# support description don't break anything
+def test_exec_cmd_with_descriptions(monkeypatch):
+    monkeypatch.setattr('sys.stdin', open("/dev/null"))
+    exit_code, _, _ = exec_cmd("ls -lah", description="listing a dir")
+    assert exit_code == 0
 
 # Lower level tests for the underlying local and remote exec functions
 

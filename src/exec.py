@@ -7,13 +7,10 @@ from ez_state import Ez
 from fabric import Connection
 from formatting import format_output_string, printf, printf_err
 from io import StringIO
-from invoke.exceptions import UnexpectedExit
 from rich.console import Console
 from rich.progress import (Progress, SpinnerColumn, TextColumn, 
     TimeElapsedColumn)
 from typing import Tuple, Union
-
-# TODO: a single method that handles local and remote as well to unify code.
 
 def exec_cmd(
     cmd: Union[str, list[str]],
@@ -26,28 +23,52 @@ def exec_cmd(
     # Description sets up a master context for showing things
     if description is not None:
         description = format_output_string(description)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task(description)
 
-    if uri is None:
-        return exec_cmd_local(cmd, cwd)
+            if uri is None:
+                result = exec_cmd_local(cmd, cwd, progress=progress)
+            else:
+                result = exec_cmd_remote(cmd, uri, private_key_path, cwd, 
+                    progress=progress)
+
+            if description is not None:
+                progress.console.log(result[1])
+                progress.console.bell()
+                description = format_output_string(f"Completed: {description}")
+                progress.update(task, description=description)
+
+            return result
     else:
-        return exec_cmd_remote(cmd, uri, private_key_path, cwd)
-
-    # Down here we will clean up the master context
+        if uri is None:
+            return exec_cmd_local(cmd, cwd)
+        else:
+            return exec_cmd_remote(cmd, uri, private_key_path, cwd)
 
 def exec_cmd_local(
     cmd: Union[str, list[str]],
     cwd: str=None,
+    progress: Progress=None,
 ) -> Union[Tuple[int, str, str], list[Tuple[int, str, str]]]: 
     """Execute cmd or list[cmd] locally in cwd"""
     if type(cmd) is str:
-        return exec_single_cmd_local(cmd, cwd)
+        result = exec_single_cmd_local(cmd, cwd)
+        if progress is not None:
+            progress.console.log(result[1])
     elif type(cmd) is list:
         result = []
         for c in cmd:
-            result.append(exec_single_cmd_local(c, cwd))
-        return result
+            r = exec_single_cmd_local(c, cwd)
+            result.append(r)
+            if progress is not None:
+                progress.console.log(r[1])
     else:
         raise TypeError("cmd must be str or list[str]")
+    return result
 
 def exec_single_cmd_local(
     cmd: str,
@@ -65,6 +86,7 @@ def exec_cmd_remote(
     uri: str,
     private_key_path: str,
     cwd: str=None,
+    progress: Progress=None,
 ) -> Tuple[int, str, str]:
     """Execute cmd on uri using private_key_path in cwd"""
     connect_args={
@@ -74,14 +96,20 @@ def exec_cmd_remote(
         if cwd is not None:
             connection.cd(cwd)
         if type(cmd) is str:
-            return exec_single_cmd_remote(connection, cmd)
+            result = exec_single_cmd_remote(connection, cmd)
+            if progress is not None:
+                progress.console.log(result[1])
         elif type(cmd) is list:
             result = []
             for c in cmd:
-                result.append(exec_single_cmd_remote(connection, c))
-            return result
+                r = exec_single_cmd_remote(connection, c)
+                result.append(r)
+                if progress is not None:
+                    progress.console.log(r)
         else:
             raise TypeError("cmd must be str or list[str]")
+
+        return result
 
 def exec_single_cmd_remote(
     connection: Connection,
