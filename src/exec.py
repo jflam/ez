@@ -15,6 +15,17 @@ from typing import Tuple
 
 # TODO: a single method that handles local and remote as well to unify code.
 
+def exec_cmd(
+    cmd: str,
+    uri: str=None,
+    private_key_path: str=None,
+    cwd: str=None,
+) -> Tuple[int, str, str]:
+    if uri is None:
+        return exec_cmd_local(cmd, cwd)
+    else:
+        return exec_cmd_remote(cmd, uri, private_key_path, cwd)
+
 def exec_cmd_local(
     cmd: str,
     cwd: str=None,
@@ -31,7 +42,6 @@ def exec_cmd_remote(
     uri: str,
     private_key_path: str,
     cwd: str=None,
-    warn: bool=True,
 ) -> Tuple[int, str, str]:
     """Execute cmd on uri using private_key_path in cwd"""
     connect_args={
@@ -40,16 +50,15 @@ def exec_cmd_remote(
     with Connection(uri, connect_kwargs=connect_args) as c:
         if cwd is not None:
             c.cd(cwd)
-        return exec_cmd_remote_line(c, cmd, warn)
+        return exec_cmd_remote_line(c, cmd)
 
 def exec_cmd_remote_line(
     connection: Connection,
     cmd: str,
-    warn: bool=True,
 ) -> Tuple[int, str, str]:
-    """Execute cmd on connection optionally suppressing exceptions with a
-    warning"""
-    result = connection.run(cmd, warn=warn)
+    """Execute cmd on connection, ensuring that result no exceptions are
+thrown"""
+    result = connection.run(cmd, warn=True)
     return (result.exited, 
         result.stdout.strip(), 
         result.stderr.strip())
