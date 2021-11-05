@@ -11,13 +11,13 @@ TEST_HOST = "eztestvm.southcentralus.cloudapp.azure.com"
 TEST_URI = f"{TEST_USER}@{TEST_HOST}"
 TEST_KEY = os.path.expanduser("~/.ssh/id_rsa_azure")
 
-def test_remote_vm_online(monkeypatch):
-    monkeypatch.setattr('sys.stdin', open("/dev/null"))
+def test_remote_vm_online():
     exit_code, _, _ = exec_cmd(f"nc -z {TEST_HOST} 22 > /dev/null")
     if exit_code != 0:
         pytest.exit(f"These tests require {TEST_HOST} to be running")
 
 # Higher level tests for the main 
+# TODO: refactor into local and remote tests
 def test_exec_cmd(monkeypatch):
     monkeypatch.setattr('sys.stdin', open("/dev/null"))
     exit_code, stdout, _ = exec_cmd("uname")
