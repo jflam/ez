@@ -7,6 +7,7 @@ from ez_state import Ez
 from fabric import Connection
 from formatting import format_output_string, printf, printf_err
 from io import StringIO
+from invoke.exceptions import UnexpectedExit
 from rich.console import Console
 from rich.progress import (Progress, SpinnerColumn, TextColumn, 
     TimeElapsedColumn)
@@ -30,6 +31,7 @@ def exec_cmd_remote(
     uri: str,
     private_key_path: str,
     cwd: str=None,
+    warn: bool=True,
 ) -> Tuple[int, str, str]:
     """Execute cmd on uri using private_key_path in cwd"""
     connect_args={
@@ -38,7 +40,7 @@ def exec_cmd_remote(
     with Connection(uri, connect_kwargs=connect_args) as c:
         if cwd is not None:
             c.cd(cwd)
-        return exec_cmd_remote_line(c, cmd)
+        return exec_cmd_remote_line(c, cmd, warn)
 
 def exec_cmd_remote_line(
     connection: Connection,
