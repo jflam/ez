@@ -1,5 +1,5 @@
 import os, platform, pytest
-from exec import exec_cmd_local, exec_cmd_remote, exec_cmd
+from exec import exec_cmd_local, exec_cmd_remote, exec_cmd, exec_file
 
 # Tests below use a test vm called eztestvm that must be started first before
 # running the tests. You can use ez to create this VM for you:
@@ -53,6 +53,19 @@ def test_exec_cmd_with_descriptions(monkeypatch):
     monkeypatch.setattr('sys.stdin', open("/dev/null"))
     exit_code, _, _ = exec_cmd("ls -lah", description="listing a dir")
     assert exit_code == 0
+
+def test_exec_file_local(tmp_path):
+    p = tmp_path / "cmds"
+    p.write_text("""
+uname
+echo "Hello, World"
+""")
+    results = exec_file(tmp_path / "cmds", description="Local file exec")
+    assert len(results) == 2
+    assert results[0][0] == 0
+    assert results[0][1] == platform.system()
+    assert results[1][0] == 0
+    assert results[1][1] == "Hello, World"
 
 # Lower level tests for the underlying local and remote exec functions
 

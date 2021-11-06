@@ -10,7 +10,63 @@ from io import StringIO
 from rich.console import Console
 from rich.progress import (Progress, SpinnerColumn, TextColumn, 
     TimeElapsedColumn)
-from typing import Tuple, Union
+from typing import Tuple, Union, List
+
+def exec_file(
+    path: str,
+    uri: str=None,
+    private_key_path: str=None,
+    description: str=None,
+    cwd: str=None,
+) -> list[Tuple[int, str, str]]:
+    with open(path, "rt") as f:
+        lines = f.readlines()
+
+    if description is None:
+        raise ValueError("Must pass description to exec_file")
+
+    results = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+    ) as progress:
+        parent_task = progress.add_task(format_output_string(description))
+
+        current_task = None
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line == "":
+                i += 1
+                continue
+            elif line.startswith("##"):
+                if current_task is not None:
+                    progress.update(task_id, description=format_output_string(
+                        f"Completed: {current_task}"), completed=100)
+                current_task = line[2:].strip()
+                task_id = progress.add_task(format_output_string(
+                    f"Running: {current_task}"))
+                i += 1
+                continue
+            elif line.startswith("#"):
+                i += 1
+                continue
+            elif line.endswith("\\"):
+                while i < len(lines):
+                    i += 1
+                    block_line = lines[i].strip()
+                    line += f"\n  {block_line}"
+                    if not block_line.endswith("\\"):
+                        break
+            result = exec_cmd(line, uri, private_key_path, cwd=cwd)
+            results.append(result)
+            i += 1
+
+        progress.update(parent_task, description=format_output_string(
+            f"Completed: {current_task}"), completed=100)
+        progress.console.bell()
+        return results
 
 def exec_cmd(
     cmd: Union[str, list[str]],
