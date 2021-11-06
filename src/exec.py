@@ -184,13 +184,6 @@ thrown"""
         result.stdout.strip(), 
         result.stderr.strip())
 
-def internal_exec_cmd(
-    command: str,
-    target_compute: str=".",
-    cwd: str=None):
-    """Internal method to execute a command on the target"""
-    pass
-
 # TODO: an internal method that we test separately from one that wraps
 # functionality like logging, formatting, progress, status etc.
 
