@@ -31,7 +31,7 @@ def exec_file(
         TextColumn("[progress.description]{task.description}"),
         TimeElapsedColumn(),
     ) as progress:
-        parent_task = progress.add_task(format_output_string(description))
+        overall_task = progress.add_task(format_output_string(description))
 
         current_task = None
         i = 0
@@ -69,7 +69,7 @@ def exec_file(
                 f"Completed: {current_task}", indent=2))
 
         # Mark overall task complete
-        progress.update(parent_task, description=format_output_string(
+        progress.update(overall_task, description=format_output_string(
             f"Completed: {description}"), completed=100)
         progress.console.bell()
         return results
