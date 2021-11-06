@@ -12,13 +12,23 @@ from rich.progress import (Progress, SpinnerColumn, TextColumn,
     TimeElapsedColumn)
 from typing import Tuple, Union, List
 
+class ExecResult:
+    exit_code: int 
+    stdout: str
+    stderr: str
+
+    def __init__(self, exit_code: int, stdout: str, stderr: str):
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
+
 def exec_file(
     path: str,
     uri: str=None,
     private_key_path: str=None,
     description: str=None,
     cwd: str=None,
-) -> list[Tuple[int, str, str]]:
+) -> list[ExecResult]:
     with open(path, "rt") as f:
         lines = f.readlines()
 
@@ -43,7 +53,8 @@ def exec_file(
             elif line.startswith("##"):
                 if current_task is not None:
                     progress.update(task_id, description=format_output_string(
-                        f"Completed: {current_task}", indent=2), completed=100)
+                        f"Completed: {current_task}", indent=2), 
+                        completed=100)
                 current_task = line[2:].strip()
                 task_id = progress.add_task(format_output_string(
                     f"Running: {current_task}", indent=2))
@@ -80,7 +91,7 @@ def exec_cmd(
     private_key_path: str=None,
     description: str=None,
     cwd: str=None,
-) -> Tuple[int, str, str]:
+) -> Union[ExecResult, list[ExecResult]]:
 
     # Description sets up a master context for showing things
     if description is not None:
@@ -99,7 +110,7 @@ def exec_cmd(
                     progress=progress)
 
             if description is not None:
-                progress.console.log(result[1])
+                progress.console.log(result.stdout)
                 progress.console.bell()
                 description = format_output_string(f"Completed: {description}")
                 progress.update(task, description=description)
@@ -115,19 +126,19 @@ def exec_cmd_local(
     cmd: Union[str, list[str]],
     cwd: str=None,
     progress: Progress=None,
-) -> Union[Tuple[int, str, str], list[Tuple[int, str, str]]]: 
+) -> Union[ExecResult, list[ExecResult]]: 
     """Execute cmd or list[cmd] locally in cwd"""
     if type(cmd) is str:
         result = exec_single_cmd_local(cmd, cwd)
         if progress is not None:
-            progress.console.log(result[1])
+            progress.console.log(result.stdout)
     elif type(cmd) is list:
         result = []
         for c in cmd:
             r = exec_single_cmd_local(c, cwd)
             result.append(r)
             if progress is not None:
-                progress.console.log(r[1])
+                progress.console.log(r.stdout)
     else:
         raise TypeError("cmd must be str or list[str]")
     return result
@@ -135,11 +146,11 @@ def exec_cmd_local(
 def exec_single_cmd_local(
     cmd: str,
     cwd: str=None,
-) -> Tuple[int, str, str]:
+) -> ExecResult:
     """Execute cmd locally in cwd"""
     result = subprocess.run(cmd, cwd=cwd, check=False, shell=True, 
         capture_output=True)
-    return (result.returncode, 
+    return ExecResult(result.returncode, 
         result.stdout.decode("utf8").strip(), 
         result.stderr.decode("utf8").strip())
 
@@ -149,7 +160,7 @@ def exec_cmd_remote(
     private_key_path: str,
     cwd: str=None,
     progress: Progress=None,
-) -> Tuple[int, str, str]:
+) -> Union[ExecResult, list[ExecResult]]:
     """Execute cmd on uri using private_key_path in cwd"""
     connect_args={
         "key_filename": [private_key_path]
@@ -160,14 +171,14 @@ def exec_cmd_remote(
         if type(cmd) is str:
             result = exec_single_cmd_remote(connection, cmd)
             if progress is not None:
-                progress.console.log(result[1])
+                progress.console.log(result.stdout)
         elif type(cmd) is list:
             result = []
             for c in cmd:
                 r = exec_single_cmd_remote(connection, c)
                 result.append(r)
                 if progress is not None:
-                    progress.console.log(r)
+                    progress.console.log(r.stdout)
         else:
             raise TypeError("cmd must be str or list[str]")
 
@@ -176,11 +187,11 @@ def exec_cmd_remote(
 def exec_single_cmd_remote(
     connection: Connection,
     cmd: str,
-) -> Tuple[int, str, str]:
+) -> ExecResult:
     """Execute cmd on connection, ensuring that result no exceptions are
 thrown"""
     result = connection.run(cmd, warn=True)
-    return (result.exited, 
+    return ExecResult(result.exited, 
         result.stdout.strip(), 
         result.stderr.strip())
 
