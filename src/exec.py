@@ -43,10 +43,10 @@ def exec_file(
             elif line.startswith("##"):
                 if current_task is not None:
                     progress.update(task_id, description=format_output_string(
-                        f"Completed: {current_task}"), completed=100)
+                        f"Completed: {current_task}", indent=2), completed=100)
                 current_task = line[2:].strip()
                 task_id = progress.add_task(format_output_string(
-                    f"Running: {current_task}"))
+                    f"Running: {current_task}", indent=2))
                 i += 1
                 continue
             elif line.startswith("#"):
@@ -63,8 +63,14 @@ def exec_file(
             results.append(result)
             i += 1
 
+        # Mark current sub-task complete (if any)
+        if current_task is not None:
+            progress.update(task_id, description=format_output_string(
+                f"Completed: {current_task}", indent=2))
+
+        # Mark overall task complete
         progress.update(parent_task, description=format_output_string(
-            f"Completed: {current_task}"), completed=100)
+            f"Completed: {description}"), completed=100)
         progress.console.bell()
         return results
 
