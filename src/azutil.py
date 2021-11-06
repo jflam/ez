@@ -661,3 +661,6 @@ def mount_storage_account(ez: Ez,
         printf_err(f"mount failed while running {cmd}")
 
     return result == 0
+
+def get_compute_uri(ez: Ez, compute_name: str) -> str:
+    return f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"

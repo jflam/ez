@@ -12,10 +12,10 @@ def format_output_string(text: str, error: bool=False, indent: int=0):
     spaces = " " * indent
     return f"{spaces}[{color}]{first.upper()}[/{color}] {rest}"
 
-def printf_err(text:str):
+def printf_err(text:str, indent: int=0):
     """Print formatted error string"""
-    print(format_output_string(f"error: {text}", error=True))
+    print(format_output_string(f"error: {text}", error=True, indent=indent))
 
-def printf(text:str):
+def printf(text:str, indent: int=0):
     """Print formatted output string"""
-    print(format_output_string(text, error=False))
+    print(format_output_string(text, error=False, indent=indent))

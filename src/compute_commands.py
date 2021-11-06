@@ -3,12 +3,11 @@
 import click
 import constants as C
 import json
-import subprocess
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
     jit_activate_vm, get_vm_size, get_active_compute_name, 
-    mount_storage_account)
-from exec import exec_script_using_ssh, exec_command
+    mount_storage_account, get_compute_uri)
+from exec import exec_script_using_ssh, exec_command, exec_cmd, exec_file
 from ez_state import Ez
 from fabric import Connection
 from formatting import printf, printf_err
@@ -26,14 +25,11 @@ from typing import Tuple
               "k8s (Kubernetes)"))
 @click.option("--image", "-i", default="UbuntuLTS", 
               help="Image to use to create the VM (default UbuntuLTS)")
-@click.option("--check-dns", "-c", is_flag=True, 
-              help=("Check if DNS name is available for "
-              "--compute-name in region"))
 @click.option("--no-install", "-q", is_flag=True, default=False,
               help=("Do not install system software"))
 @click.pass_obj
 def create(ez: Ez, compute_name, compute_size, compute_type, image, 
-           check_dns, no_install):
+           no_install):
     """Create a compute node"""
 
     # User can pass in nothing for --compute-size and we will helpfully list
@@ -43,14 +39,21 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         print(f"Missing VM size. VM sizes available in {ez.region}:")
         cmd = (f"az vm list-sizes --subscription {ez.subscription} "
                f"--location {ez.region} --output table")
-        subprocess.run(cmd.split(" "))
+        result = exec_cmd(cmd)
+        if result.exit_code == 0:
+            print(result.stdout)
+        else:
+            printf_err(result.stderr)
         exit(1)
 
     # Check to see if the compute-name is taken already
-    if check_dns:
-        compute_dns_name = f"{compute_name}.{ez.region}.cloudapp.azure.com"
-        if system(f"nslookup {compute_dns_name} > /dev/null") == 0:
-            printf_err(f"The domain name {compute_dns_name} is already "
+    cmd = f"az vm list -d -o table --query \"[?name=='{compute_name}']\""
+    result = exec_cmd(cmd)
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+    else:
+        if result.stdout != "":
+            printf_err(f"The compute {compute_name} is already "
                 "taken. Try a different --compute-name")
             exit(1)
 
@@ -79,9 +82,9 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
             f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
-        returncode, out = exec_command(ez, cmd, description=description)
-        if returncode != 0:
-            print(out)
+        result = exec_cmd(cmd, description=description)
+        if result.exit_code != 0:
+            printf_err(result.stderr)
             exit(1)
         
         if no_install:
@@ -95,26 +98,18 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
             f"{path.dirname(path.realpath(__file__))}/scripts/"
             f"{provision_vm_script}"
         )
-        exec_script_using_ssh(
-            ez, 
-            script_path=provision_vm_script_path, 
-            compute_name=compute_name, 
-            line_by_line=True,
-            description=description)
+
+        uri = get_compute_uri(ez, compute_name)
+        result = exec_file(provision_vm_script_path, uri=uri, 
+            private_key_path=ez.private_key_path, description=description)
 
         __enable_acr(ez, compute_name)
         __enable_github(ez, compute_name)
 
         # Ask machine to reboot (need to swallow exception here)
-        try:
-            exec_script_using_ssh(
-                ez,
-                compute_name,
-                script_text="sudo reboot",
-                description=f"Rebooting {compute_name}"
-            )
-        except Exception:
-            pass
+        exec_cmd("sudo reboot", uri=uri, 
+            private_key_path=ez.private_key_path, 
+            description=f"Rebooting {compute_name}")
 
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
@@ -167,15 +162,12 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
            f"--scope-map _repositories_push "
            f"--output json")
     fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
-    retval, output = exec_command(ez, 
-        cmd, 
-        description=f"generating {fq_repo_name} token")
+    result = exec_cmd(cmd, description=f"generating {fq_repo_name} token")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
-    if retval != 0:
-        print(output)
-        exit(retval)
-
-    j = json.loads(output)
+    j = json.loads(result.stdout)
     token_name = j["name"]
 
     # Retrieve the generated passwords and use them for the token
@@ -189,10 +181,12 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
               f"{ez.registry_name}.azurecr.io\" >> ~/.bashrc")
 
     # Append the docker login command to the ~/.bashrc on compute_name
-    return exec_script_using_ssh(ez, 
-        script_text=bashrc, 
-        compute_name=compute_name,
+    uri = get_compute_uri(ez, compute_name)
+    result = exec_cmd(bashrc, uri=uri, private_key_path=ez.private_key_path,
         description=f"Updating ~/.bashrc on {compute_name}")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+    return result.exit_code
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -213,67 +207,83 @@ def __enable_github(ez: Ez,
     cmd = (f"echo -e 'y\n' | ssh-keygen -t ed25519 -C \"{comment}\" "
            f"-N '' -f /home/{ez.user_name}/.ssh/id_rsa_github "
            f"> /dev/null 2>&1")
-    result = exec_script_using_ssh(ez,
-        script_text=cmd,
-        compute_name=compute_name,
+    uri = get_compute_uri(ez, compute_name)
+    result = exec_cmd(cmd, uri=uri, private_key_path=ez.private_key_path,
         description=f"Generating public/private key pair on {compute_name}")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
     # cat the public key
     cmd = f"cat /home/{ez.user_name}/.ssh/id_rsa_github.pub"
-    result = exec_script_using_ssh(ez, 
-        compute_name=compute_name, 
-        script_text=cmd,
-        hide_output=True,
+    result = exec_cmd(cmd, uri=uri, private_key_path=ez.private_key_path,
         description="Reading generated public key")
-    if result[0] != 0:
-        printf_err(f"{result[1]}")
-        exit(1)
-    public_key = result[1].strip()
+
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
+    public_key = result.stdout.strip()
 
     # Ensure that github RSA key is in the known-hosts file
-    hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
-    with Connection(hostname, user=ez.user_name) as c:
-        # Retrieve the GitHub public key
-        c.run("ssh-keyscan -H github.com > /tmp/github.pub", hide="both")
 
-        # Compute the SHA256 hash of the public key
-        result = c.run("ssh-keygen -lf /tmp/github.pub -E sha256", 
-                       hide="both")
+    # Retrieve the GitHub public key from github.com
+    result = exec_cmd("ssh-keyscan -H github.com > /tmp/github.pub")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
-        # Compare computed SHA256 hash of public key with known good value
-        if C.GITHUB_PUBLIC_KEY_SHA256 in result.stdout:
+    # Compute the SHA256 hash of the github.com public key
+    result = exec_cmd("ssh-keygen -lf /tmp/github.pub -E sha256")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
-            # Append the retrieved GitHub public key to known_hosts
-            c.run("cat /tmp/github.pub >> ~/.ssh/known_hosts")
+    # Compare computed SHA256 hash with known github.com public key
+    if C.GITHUB_PUBLIC_KEY_SHA256 in result.stdout:
 
-            # Verify that we can actually connect to GitHub
-            result = c.run("ssh -T git@github.com", warn=True, hide="both")
-            if "successfully authenticated" in result.stdout:
-                printf("completed: validating GitHub public key and adding "
-                       "to known_hosts")
-            else:
-                printf_err(f"error connecting to GitHub: {result.stderr}")
+        # Append the GitHub public key to known_hosts
+        result = exec_cmd("cat /tmp/github.pub >> ~/.ssh/known_hosts")
+        if result.exit_code != 0:
+            printf_err(result.stderr)
+            exit(result.exit_code)
+
+        # Test connection with GitHub by trying to SSH using the key
+        result = exec_cmd("ssh -T git@github.com")
+        if "successfully authenticated" in result.stderr:
+            printf("completed: validating GitHub public key and adding "
+                    "to known_hosts", indent=2)
         else:
-            printf_err(f"Possible man-in-the-middle attack! "
-                       f"Computed SHA256 hash from public key retrieved from "
-                       f"github.com is: {result.stdout} and known "
-                       f"SHA256 hash is {C.GITHUB_PUBLIC_KEY_SHA256}.")
-            exit(1)
+            printf_err(f"error connecting to GitHub: {result.stderr}")
+    else:
+        printf_err(f"Possible man-in-the-middle attack! "
+                    f"Computed SHA256 hash from public key retrieved from "
+                    f"github.com is: {result.stdout} and known "
+                    f"SHA256 hash is {C.GITHUB_PUBLIC_KEY_SHA256}.")
+        exit(1)
 
+    # Append this file to VM ~/.ssh/config file so that git on the VM 
+    # knows how to connect
     gh_config = f"""
 Host github.com
     HostName github.com
     AddKeysToAgent yes
     IdentityFile /home/{ez.user_name}/.ssh/id_rsa_github
 """
-    # Write locally
+    # Write locally and copy the local file to the server
     with open("/tmp/gh_config", "w") as f:
         f.write(gh_config)
 
+    # TODO: consider writing a copy to server function using fabric
+    hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     with Connection(hostname, user=ez.user_name) as c:
         c.put("/tmp/gh_config", f"/home/{ez.user_name}/gh_config")
-        c.run(f"cat /home/{ez.user_name}/gh_config "
-              f">> /home/{ez.user_name}/.ssh/config")
+
+    result = exec_cmd(f"cat /home/{ez.user_name}/gh_config "
+        f">> /home/{ez.user_name}/.ssh/config", uri=uri, 
+        private_key_path=ez.private_key_path)
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
     if manual:
         # Put it on the clipboard 
@@ -293,9 +303,11 @@ Host github.com
         # pass tmp file to gh cli
         cmd = (f"gh ssh-key add /tmp/id_rsa_github.pub "
                f"--title \"{compute_name}-token\"")
-        exec_command(ez, 
-            cmd, 
-            description="registering public key with GitHub")
+        result = exec_cmd(cmd, 
+            description="Registering public key with GitHub")
+        if result.exit_code != 0:
+            printf_err(result.stderr)
+            exit(result.exit_code)
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -317,10 +329,10 @@ def delete(ez: Ez, compute_name):
     """Delete a compute node"""
     compute_name = get_active_compute_name(ez, compute_name)
     description = f"deleting compute node {compute_name}"
-    exec_command(ez, (
-        f"az vm delete --yes --name {compute_name} "
-        f"--resource-group {ez.resource_group}"),
-        description=description)
+    result = exec_cmd((f"az vm delete --yes --name {compute_name} "
+        f"--resource-group {ez.resource_group}"), description=description)
+    if result.exit_code != 0:
+        printf_err(result.stderr)
     exit(0)
 
 @click.command()

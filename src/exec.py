@@ -77,7 +77,7 @@ def exec_file(
         # Mark current sub-task complete (if any)
         if current_task is not None:
             progress.update(task_id, description=format_output_string(
-                f"Completed: {current_task}", indent=2))
+                f"Completed: {current_task}", indent=2), completed=100)
 
         # Mark overall task complete
         progress.update(overall_task, description=format_output_string(
@@ -104,16 +104,14 @@ def exec_cmd(
             task = progress.add_task(description)
 
             if uri is None:
-                result = exec_cmd_local(cmd, cwd, progress=progress)
+                result = exec_cmd_local(cmd, cwd)
             else:
-                result = exec_cmd_remote(cmd, uri, private_key_path, cwd, 
-                    progress=progress)
+                result = exec_cmd_remote(cmd, uri, private_key_path, cwd)
 
             if description is not None:
-                progress.console.log(result.stdout)
                 progress.console.bell()
                 description = format_output_string(f"Completed: {description}")
-                progress.update(task, description=description)
+                progress.update(task, description=description, completed=100)
 
             return result
     else:
@@ -125,20 +123,15 @@ def exec_cmd(
 def exec_cmd_local(
     cmd: Union[str, list[str]],
     cwd: str=None,
-    progress: Progress=None,
 ) -> Union[ExecResult, list[ExecResult]]: 
     """Execute cmd or list[cmd] locally in cwd"""
     if type(cmd) is str:
         result = exec_single_cmd_local(cmd, cwd)
-        if progress is not None:
-            progress.console.log(result.stdout)
     elif type(cmd) is list:
         result = []
         for c in cmd:
             r = exec_single_cmd_local(c, cwd)
             result.append(r)
-            if progress is not None:
-                progress.console.log(r.stdout)
     else:
         raise TypeError("cmd must be str or list[str]")
     return result
@@ -159,7 +152,6 @@ def exec_cmd_remote(
     uri: str,
     private_key_path: str,
     cwd: str=None,
-    progress: Progress=None,
 ) -> Union[ExecResult, list[ExecResult]]:
     """Execute cmd on uri using private_key_path in cwd"""
     connect_args={
@@ -170,15 +162,11 @@ def exec_cmd_remote(
             connection.cd(cwd)
         if type(cmd) is str:
             result = exec_single_cmd_remote(connection, cmd)
-            if progress is not None:
-                progress.console.log(result.stdout)
         elif type(cmd) is list:
             result = []
             for c in cmd:
                 r = exec_single_cmd_remote(connection, c)
                 result.append(r)
-                if progress is not None:
-                    progress.console.log(r.stdout)
         else:
             raise TypeError("cmd must be str or list[str]")
 
@@ -190,7 +178,7 @@ def exec_single_cmd_remote(
 ) -> ExecResult:
     """Execute cmd on connection, ensuring that result no exceptions are
 thrown"""
-    result = connection.run(cmd, warn=True)
+    result = connection.run(cmd, warn=True, hide="both")
     return ExecResult(result.exited, 
         result.stdout.strip(), 
         result.stderr.strip())
