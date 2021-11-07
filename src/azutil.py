@@ -620,10 +620,12 @@ def get_storage_account_key(ez: Ez, storage_account_name: str) -> str:
         f"{ez.resource_group} --account-name {storage_account_name} "
         f"--query \"[0].value\" --output json")
     
-    result = exec_command(ez, 
-        cmd, description="retrieving storage account key")
-    key = result[1].strip().strip('"')
-    return key
+    result = exec_cmd(cmd, description="Retrieving storage account key")
+    if result.exit_code == 0:
+        return result.stdout.strip().strip('"')
+    else:
+        printf_err(result.stderr)
+        exit(1)
 
 def mount_storage_account(ez: Ez, 
     compute_name: str, 
@@ -638,10 +640,12 @@ def mount_storage_account(ez: Ez,
 
     # Ensure that the mount directory is created on the server
     cmd = f"mkdir -p {mount_path}"
-    result, _ = exec_script_using_ssh(ez, compute_name, script_text=cmd,
+    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+        ez.private_key_path,
         description="creating data mount directory on remote compute")
-    if result != 0:
-        exit(1)
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
 
     # Mount the Azure File Share onto the VM 
     # TODO: Add a flag that indicates whether we want to mount temporarily 
@@ -651,18 +655,26 @@ def mount_storage_account(ez: Ez,
         raise ValueError("persistent_mount True is not supported yet")
 
     cmd = f"sudo umount {mount_path}"
-    result, out = exec_script_using_ssh(ez, compute_name, script_text=cmd, 
-        description="dismounting Azure File share on remote compute")
+    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+        ez.private_key_path,
+        description="Dismounting Azure File share on remote compute")
+
+    # File share may not be mounted so we don't exit here
+    if result.exit_code != 0:
+        printf_err(result.stderr)
 
     cmd = (f"sudo mount -t cifs {smb_path} {mount_path} "
         f"-o username={ez.storage_account_name},password={key},serverino,"
         f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
-    result, out = exec_script_using_ssh(ez, compute_name, script_text=cmd, 
-        description="mounting Azure File share on remote compute")
-    if result != 0:
-        printf_err(f"mount failed while running {cmd}")
+    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+        ez.private_key_path,
+        description="Mounting Azure File share on remote compute")
 
-    return result == 0
+    if result.exit_code != 0:
+        printf_err(f"mount failed while running {cmd}")
+        exit(result.exit_code)
+
+    return result.exit_code == 0
 
 def get_compute_uri(ez: Ez, compute_name: str) -> str:
     return f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
