@@ -6,7 +6,7 @@ import platform
 import shlex
 
 from exec import (exec_command, exec_script_using_ssh, 
-    exec_command_return_dataframe)
+    exec_command_return_dataframe, exec_cmd)
 from getpass import getuser
 from ez_state import Ez
 from formatting import format_output_string, printf, printf_err
@@ -245,7 +245,7 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
 
     ez.jit_activated = True
 
-def get_vm_size(ez: Ez, vm_name):
+def get_vm_size(ez: Ez, vm_name) -> str:
     """Return the VM size of vm_name"""
     vm_name = get_active_compute_name(ez, vm_name)
     info_cmd = (
@@ -253,10 +253,12 @@ def get_vm_size(ez: Ez, vm_name):
         f"--resource-group {ez.resource_group} "
         f"--query hardwareProfile.vmSize -o tsv"
     )
-    _, vm_size = exec_command(ez, 
-        info_cmd, 
-        description=f"querying {vm_name} for its size")
-    return vm_size
+    result = exec_cmd(info_cmd, 
+        description=f"Querying {vm_name} for its size")
+    if result.exit_code == 0:
+        return result.stdout
+    else:
+        return result.stderr
 
 def generate_devcontainer_json(ez: Ez, jupyter_port_number, token, 
                                local=False, has_gpu=False):

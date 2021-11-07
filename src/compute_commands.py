@@ -364,15 +364,22 @@ def ls(ez: Ez):
 @click.pass_obj
 def start(ez: Ez, compute_name):
     """Start a virtual machine"""
-    # TODO: do nothing if compute-name is not a VM
+
+    if compute_name == ".":
+        printf("Nothing done, local compute is already started")
+        exit(0)
+
     compute_name = get_active_compute_name(ez, compute_name)
     jit_activate_vm(ez, compute_name)
-    exec_command(ez, 
-                 (f"az vm start --name {compute_name} "
-                  f"--resource-group {ez.resource_group}"),
-                 description=f"starting compute node {compute_name}")
-    ez.active_remote_compute = compute_name
-    exit(0)
+    result = exec_cmd(f"az vm start --name {compute_name} "
+        f"--resource-group {ez.resource_group}",
+        description=f"starting compute node {compute_name}")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
+    else:
+        ez.active_remote_compute = compute_name
+        exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to stop")
@@ -381,11 +388,15 @@ def stop(ez: Ez, compute_name):
     """Stop a virtual machine"""
     compute_name = get_active_compute_name(ez, compute_name)
     # TODO: get compute_type too and fail for now on this
-    exec_command(ez, 
-                 (f"az vm deallocate --name {compute_name} "
-                  f"--resource-group {ez.resource_group}"),
-                 description=f"stopping compute node {compute_name}")
-    exit(0)
+    result = exec_cmd(f"az vm deallocate --name {compute_name} "
+        f"--resource-group {ez.resource_group}",
+        description=f"stopping compute node {compute_name}")
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
+    else:
+        ez.active_remote_compute = compute_name
+        exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to ssh into")
@@ -396,16 +407,15 @@ def ssh(ez: Ez, compute_name):
     # TODO: get compute_type too and fail for now on this
     jit_activate_vm(ez, compute_name)
     ez.active_remote_compute = compute_name
-    ssh_remote_host = (
-        f"{ez.user_name}@{compute_name}."
-        f"{ez.region}.cloudapp.azure.com"
-    )
+    ssh_remote_host = get_compute_uri(ez, compute_name)
     cmd = (
         f"ssh -i {ez.private_key_path} "
         f" -o StrictHostKeyChecking=no "
         f"{ssh_remote_host}"
     )
     printf(f"Connecting to {ssh_remote_host}")
+
+    # Use system() here because we want to have an interactive session
     system(cmd)
 
 @click.command()
@@ -445,20 +455,31 @@ def info(ez: Ez, compute_name):
     # TODO: do this with AKS and the correct compute pool
 
     # Now use the vm_size to get hardware details 
-    retcode, out = exec_command(
-        ez, 
-        f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}",
-        description=f"querying {compute_name} for details",
-        debug=True)
-    print(out)
-    if retcode == 0:
-        specs = out.split("\t")
-        print((
-            f"[green]INFO[/green] for {compute_name} size: {specs[2]}: "
-            f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
+    result = exec_cmd(f"az vm list-sizes -l {ez.region} --output tsv "
+        f"| grep {compute_size}", description=f"Querying {compute_name}")
+    if result.exit_code == 0:
+        specs = result.stdout.split("\t")
+        print(f"  [green]INFO[/green] for {compute_name} size: {specs[2]}: "
+            f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB")
+        exit(0)
     else:
-        printf_err(out)
-    exit(retcode)
+        printf_err(result.stderr)
+        exit(result.exit_code)
+
+    # retcode, out = exec_command(
+    #     ez, 
+    #     f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}",
+    #     description=f"querying {compute_name} for details",
+    #     debug=True)
+    # print(out)
+    # if retcode == 0:
+    #     specs = out.split("\t")
+    #     print((
+    #         f"[green]INFO[/green] for {compute_name} size: {specs[2]}: "
+    #         f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
+    # else:
+    #     printf_err(out)
+    # exit(retcode)
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
