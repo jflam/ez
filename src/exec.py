@@ -110,7 +110,8 @@ def exec_cmd(
 
             if description is not None:
                 progress.console.bell()
-                description = format_output_string(f"Completed: {description}")
+                description = format_output_string(
+                    f"Completed: {description}")
                 progress.update(task, description=description, completed=100)
 
             return result
@@ -182,6 +183,13 @@ thrown"""
     return ExecResult(result.exited, 
         result.stdout.strip(), 
         result.stderr.strip())
+
+def exit_on_error(result: ExecResult):
+    if result.exit_code != 0:
+        printf_err(result.stderr)
+        exit(result.exit_code)
+
+# TODO: DEPRECATED functions below ... remove
 
 # TODO: an internal method that we test separately from one that wraps
 # functionality like logging, formatting, progress, status etc.

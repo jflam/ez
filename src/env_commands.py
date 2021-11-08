@@ -4,8 +4,9 @@ import click, glob, json, os, random, shutil, subprocess, uuid
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
     generate_vscode_project, is_gpu, jit_activate_vm, 
-    get_active_compute_name, get_compute_size, mount_storage_account)
-from exec import exec_script_using_ssh, exec_command
+    get_active_compute_name, get_compute_size, mount_storage_account,
+    get_compute_uri)
+from exec import exec_cmd, exit_on_error
 from ez_state import Ez
 from formatting import printf, printf_err
 from os import getcwd, path
@@ -26,40 +27,40 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
     printf_err("k8s support needs reimplementation")
     exit(1)
 
-    path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
-                                                     jupyter_port, token, 
-                                                     ".", has_gpu, 
-                                                     force_generate, True)
+    # path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
+    #                                                  jupyter_port, token, 
+    #                                                  ".", has_gpu, 
+    #                                                  force_generate, True)
 
-    # ASSUME if path_to_vscode_project exists that image built alredy
-    if not path.exists(path_to_vscode_project):
-        build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
-                    f"--no-run {path_to_vscode_project}")
-        print(f"BUILD Docker image locally: {build_cmd}")
-        exec_command(ez, build_cmd)
-        docker_cmd = (f"docker push jflam/{env_name}")
-        print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
-        exec_command(ez, docker_cmd)
+    # # ASSUME if path_to_vscode_project exists that image built alredy
+    # if not path.exists(path_to_vscode_project):
+    #     build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
+    #                 f"--no-run {path_to_vscode_project}")
+    #     print(f"BUILD Docker image locally: {build_cmd}")
+    #     exec_command(ez, build_cmd)
+    #     docker_cmd = (f"docker push jflam/{env_name}")
+    #     print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
+    #     exec_command(ez, docker_cmd)
 
-    launch_user_interface(ez, user_interface, path_to_vscode_project, 
-                          jupyter_port, token)
+    # launch_user_interface(ez, user_interface, path_to_vscode_project, 
+    #                       jupyter_port, token)
 
-    jupyter_variant = "notebook"
-    if user_interface == "lab":
-        jupyter_variant = "lab"
+    # jupyter_variant = "notebook"
+    # if user_interface == "lab":
+    #     jupyter_variant = "lab"
 
-    kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} "
-               "--spec '{\"resources\":{\"limits\":{\"nvidia.com/gpu\":\"1\"}}}' "
-               f"jflam/{env_name} "
-               f"nohup jupyter {jupyter_variant} --no-browser "
-               f"--port {jupyter_port} --ip=0.0.0.0 "
-               f"--NotebookApp.token={token} .")
+    # kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} "
+    #            "--spec '{\"resources\":{\"limits\":{\"nvidia.com/gpu\":\"1\"}}}' "
+    #            f"jflam/{env_name} "
+    #            f"nohup jupyter {jupyter_variant} --no-browser "
+    #            f"--port {jupyter_port} --ip=0.0.0.0 "
+    #            f"--NotebookApp.token={token} .")
 
-    # kdo blocks while syncing local filesystem into the pod
-    # CTRL+C will terminate.
-    print(f"START pod {kdo_cmd}")
-    print("TERMINATE using CTRL+C")
-    exec_command(ez, kdo_cmd)
+    # # kdo blocks while syncing local filesystem into the pod
+    # # CTRL+C will terminate.
+    # print(f"START pod {kdo_cmd}")
+    # print("TERMINATE using CTRL+C")
+    # exec_command(ez, kdo_cmd)
 
 def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
@@ -128,10 +129,13 @@ def ls(ez: Ez):
     pass
 
 @click.command()
+@click.option("--compute-name", "-c", 
+              help=("compute node to use (default is the "
+              "current active compute node)"))
 @click.argument("src")
 @click.argument("dest")
 @click.pass_obj
-def cp(ez: Ez, src, dest):
+def cp(ez: Ez, compute_name: str, src: str, dest: str):
     """
 Copy local files to/from an environment.
 
@@ -164,6 +168,8 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
     if not dest:
         printf_err("Missing dest parameter")
         exit(1)
+
+    compute_name = get_active_compute_name(ez, compute_name)
     
     if src.startswith(":") and dest.startswith(":"):
         printf_err("Both src and dest cannot start with ':' "
@@ -174,13 +180,13 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
                f"{ez.active_remote_compute}.{ez.region}"
                f".cloudapp.azure.com:/home/{ez.user_name}/code/"
                f"{ez.active_remote_env}/{src[1:]} {dest}") 
-        subprocess.run(cmd.split(" "))
+        subprocess.run(cmd.split(' '))
     elif dest.startswith(":"):
         cmd = (f"scp -i {ez.private_key_path} {src} {ez.user_name}@"
                f"{ez.active_remote_compute}.{ez.region}"
                f".cloudapp.azure.com:/home/{ez.user_name}/code/"
                f"{ez.active_remote_env}/{dest[1:]}") 
-        subprocess.run(cmd.split(" "))
+        subprocess.run(cmd.split(' '))
     else:
         printf_err("One of src or dest must start with ':' to "
                    "indicate remote")
@@ -219,8 +225,10 @@ def ssh(ez: Ez, compute_name, env_name):
     else:
         # Run a local docker ps command to get the container id
         cmd = "docker ps --format {{.Image}},{{.ID}}"
-    result = subprocess.run(cmd.split(' '), capture_output=True)
-    containers = result.stdout.decode("utf-8").strip().split("\n")
+    
+    result = exec_cmd(cmd)
+    exit_on_error(result)
+    containers = result.stdout.strip().split("\n")
     vsc_containers = [c for c in containers if env_name in c]
     if len(vsc_containers) != 1:
         printf_err(f">1 container running with same env_name:")
@@ -261,14 +269,15 @@ def up(ez: Ez, compute_name, env_name):
     # the case.
 
     # Get the URI of the repo we are currently in
-    _, git_remote_uri = exec_command(ez, 
-        "git config --get remote.origin.url")
+    result = exec_cmd("git config --get remote.origin.url")
+    exit_on_error(result)
+    git_remote_uri = result.stdout
 
     if git_remote_uri == "":
         printf_err(f"Directory {getcwd()} is not in a git repo")
         exit(1)
 
-    printf(f"migrating {git_remote_uri} to {compute_name}")
+    printf(f"Migrating {git_remote_uri} to {compute_name}")
 
     # Start the remote VM
     jit_activate_vm(ez, compute_name)
@@ -276,24 +285,26 @@ def up(ez: Ez, compute_name, env_name):
 
     # Check to see if there are uncommitted changes
     patch_file = None
-    exit_code, _ = exec_command(ez, 
-        'git status | grep "Changes not staged for commit"', False)
-    if exit_code == 0:
-        printf("stashing uncommitted changes")
-        exec_command(ez, "git stash")
-        exec_command(ez, "git stash show -p --binary > ~/tmp/changes.patch")
+    result = exec_cmd('git status | grep "Changes not staged for commit"')
+    if result.exit_code == 0:
+        printf("Stashing uncommitted changes")
+        result = exec_cmd("git stash")
+        exit_on_error(result)
+        result = exec_cmd("git stash show -p --binary > ~/tmp/changes.patch")
+        exit_on_error(result)
 
-        printf(f"copying changes.patch to {compute_name}")
+        printf(f"Copying changes.patch to {compute_name}")
         scp_cmd = (
             f"scp -i {ez.private_key_path} "
             f"~/tmp/changes.patch "
             f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com:"
             f"/home/{ez.user_name}/tmp/changes.patch"
         )
-        exec_command(ez, scp_cmd)
+        result = exec_cmd(scp_cmd)
+        exit_on_error(result)
         patch_file = "changes.patch"
 
-    printf(f"starting {git_remote_uri} on {compute_name}")
+    printf(f"Starting {git_remote_uri} on {compute_name}")
     jupyter_port = 1235
     token = "1234"
     compute_size = get_compute_size(ez, compute_name)
@@ -339,11 +350,11 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
         else:
             compute_name = ez.active_remote_compute
     else:
-        printf(f"using {compute_name} to run {git_uri}")
+        printf(f"using {compute_name} to run {git_uri}", indent=2)
 
     if env_name is None:
         env_name = git_uri.split("/")[-1]
-        printf(f"using {env_name} (repo name) as the env name")
+        printf(f"using {env_name} (repo name) as the env name", indent=2)
 
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
@@ -355,15 +366,15 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
     # the command is run from.
     local_env_path = f"{getcwd()}/{env_name}"
     if path.exists(local_env_path):
-        exec_command(ez, 
-                     "git pull", 
-                     description=f"updating {git_uri} in {local_env_path}", 
-                     cwd=local_env_path)
+        result = exec_cmd("git pull", 
+            description=f"Updating {git_uri} in {local_env_path}", 
+            cwd=local_env_path)
+        exit_on_error(result)
     else:
         git_cmd = f"git clone {git_uri} {local_env_path}"
-        exec_command(ez, 
-                     git_cmd, 
-                     description=f"cloning {git_uri} into {local_env_path}")
+        result = exec_cmd(git_cmd, description=f"cloning {git_uri} into "
+            f"{local_env_path}")
+        exit_on_error(result)
 
     # Read the ez.json configuration file at the root of the repository. This
     # needs to be read per project and contains some additional information:
@@ -444,22 +455,19 @@ FROM {ez_json["base_container_image"]}
         full_registry_name = (f"{ez.registry_name}.azurecr.io/"
                               f"{ez.workspace_name}:{env_name}")
         cmd = f"docker manifest inspect {full_registry_name}"
-        result, _ = exec_command(ez, 
-            cmd, 
-            terminate_on_error=False,
+        result = exec_cmd(cmd, 
             description=f"checking if {full_registry_name} exists")
 
         # Returns 0 if image already exists, 1 if it does not
-        if result == 0:
+        if result.exit_code == 0:
             printf(f"Skipping build, {full_registry_name} exists already")
         else:
             cmd = (f"az acr build --registry {ez.registry_name} "
                 f"--image {ez.workspace_name}:{env_name} .")
-            exec_command(ez, 
-                cmd, 
-                cwd=devcontainer_dir,
-                log=True,
-                description="building container image using ACR Tasks")
+            result = exec_cmd(cmd, 
+                description="Building container image using ACR Tasks", 
+                cwd=devcontainer_dir)
+            exit_on_error(result)
 
     if compute_name != ".":
         # Check to see if the remote compute has the GPU capability if needed
@@ -477,18 +485,16 @@ FROM {ez_json["base_container_image"]}
                        f"at {remote_env_path}")
         remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "
                            f"cd {remote_env_path} && git pull")
-        exec_script_using_ssh(ez, 
-            compute_name=compute_name, 
-            script_text=remote_pull_cmd, 
-            hide_output=True,
+        result = exec_cmd(remote_pull_cmd, 
+            uri=get_compute_uri(ez, compute_name),
+            private_key_path=ez.private_key_path,
             description=description)
 
         remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
                             f"git clone {git_uri} {remote_env_path}")
-        exec_script_using_ssh(ez, 
-            compute_name=compute_name, 
-            script_text=remote_clone_cmd, 
-            hide_output=True,
+        result = exec_cmd(remote_clone_cmd, 
+            uri=get_compute_uri(ez, compute_name),
+            private_key_path=ez.private_key_path,
             description=description)
 
         # The .vscode directory contains a dynamically generated settings.json
@@ -651,8 +657,7 @@ FROM {ez_json["base_container_image"]}
 
     # Mount /data drive
     mount_path = f"/home/{ez.user_name}/data"
-    if mount_storage_account(ez, compute_name, mount_path):
-        exit(0)
+    mount_storage_account(ez, compute_name, mount_path)
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
@@ -660,7 +665,7 @@ FROM {ez_json["base_container_image"]}
     # manually reopen the VS Code project.
     printf(f"Launching VS Code ... you will need to reload in "
            f"remote container by clicking the Reopen in Container button in "
-           f"the notification box in the bottom right corner.")
+           f"the notification box in the bottom right corner.", indent=2)
     launch_vscode(ez, local_env_path)
 
     # Update ez state
