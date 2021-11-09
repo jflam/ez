@@ -7,7 +7,7 @@ import json
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
     jit_activate_vm, get_vm_size, get_active_compute_name, 
     mount_storage_account, get_compute_uri)
-from exec import exec_script_using_ssh, exec_command, exec_cmd, exec_file
+from exec import ExecResult, exec_cmd, exec_file, exit_on_error
 from ez_state import Ez
 from fabric import Connection
 from formatting import printf, printf_err
@@ -40,16 +40,16 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         cmd = (f"az vm list-sizes --subscription {ez.subscription} "
                f"--location {ez.region} --output table")
         result = exec_cmd(cmd)
-        if result.exit_code == 0:
-            print(result.stdout)
-        else:
-            printf_err(result.stderr)
+        exit_on_error(result)
+        print(result.stdout)
         exit(1)
 
     # Check to see if the compute-name is taken already
     cmd = f"az vm list -d -o table --query \"[?name=='{compute_name}']\""
     result = exec_cmd(cmd)
     if result.exit_code != 0:
+        # Don't exit on error as failure here will be caught when trying to
+        # create the VM instance.
         printf_err(result.stderr)
     else:
         if result.stdout != "":
@@ -60,9 +60,6 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
     # Select provisioning scripts for the VM based on whether compute_size is
     # a GPU
     if compute_type == "vm":
-        provision_vm_script = "provision-cpu"
-        if is_gpu(compute_size):
-            provision_vm_script = "provision-gpu"
 
         # TODO: parameterize this in .ez.conf
         os_disk_size = 256
@@ -83,9 +80,7 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
             f"             --os-disk-size-gb {os_disk_size}"
         )   
         result = exec_cmd(cmd, description=description)
-        if result.exit_code != 0:
-            printf_err(result.stderr)
-            exit(1)
+        exit_on_error(result)
         
         if no_install:
             exit(0)
@@ -93,20 +88,15 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
-        description = "Installing system software on compute"
-        provision_vm_script_path = (
-            f"{path.dirname(path.realpath(__file__))}/scripts/"
-            f"{provision_vm_script}"
-        )
-
-        uri = get_compute_uri(ez, compute_name)
-        result = exec_file(provision_vm_script_path, uri=uri, 
-            private_key_path=ez.private_key_path, description=description)
-
-        __enable_acr(ez, compute_name)
-        __enable_github(ez, compute_name)
+        result = __update_system(ez, compute_name, compute_size)
+        exit_on_error(result)
+        result = __enable_acr(ez, compute_name)
+        exit_on_error(result)
+        result = __enable_github(ez, compute_name)
+        exit_on_error(result)
 
         # Ask machine to reboot (need to swallow exception here)
+        uri = get_compute_uri(ez, compute_name)
         exec_cmd("sudo reboot", uri=uri, 
             private_key_path=ez.private_key_path, 
             description=f"Rebooting {compute_name}")
@@ -129,24 +119,33 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
 @click.command()
 @click.pass_obj
 def update_system(ez: Ez, compute_name, compute_size):
-    """Update the system software on compute"""
-    description = "Updating system software on compute"
+    """Update the system software on compute_name"""
+    result = __update_system(ez, compute_name, compute_size)
+    exit_on_error(result)
+
+    # Update current remote compute state
+    ez.active_remote_compute = compute_name 
+    ez.active_remote_compute_type = "vm"
+    exit(0)
+
+def __update_system(ez: Ez, compute_name: str, 
+    compute_size: str) -> ExecResult:
+    """Update the system software on compute_name and using compute_size to
+    determine if we need to install CPU or GPU system software"""
     provision_vm_script = "provision-cpu"
     if is_gpu(compute_size):
         provision_vm_script = "provision-gpu"
+
+    description = "Installing system software on compute"
     provision_vm_script_path = (
         f"{path.dirname(path.realpath(__file__))}/scripts/"
         f"{provision_vm_script}"
     )
-    exec_script_using_ssh(
-        ez, 
-        script_path=provision_vm_script_path, 
-        compute_name=compute_name, 
-        description=description,
-        line_by_line=True)
-    # Update current remote compute state
-    ez.active_remote_compute = compute_name 
-    ez.active_remote_compute_type = "vm"
+
+    uri = get_compute_uri(ez, compute_name)
+    result = exec_file(provision_vm_script_path, uri=uri, 
+        private_key_path=ez.private_key_path, description=description)
+    return result
 
 def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
     """Internal function to enable ACR on compute_name"""
@@ -163,16 +162,13 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
            f"--output json")
     fq_repo_name = f"{ez.registry_name}.azurecr.io/{repository_name}"
     result = exec_cmd(cmd, description=f"generating {fq_repo_name} token")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
 
     j = json.loads(result.stdout)
     token_name = j["name"]
 
     # Retrieve the generated passwords and use them for the token
     password1 = j["credentials"]["passwords"][0]["value"]
-    password2 = j["credentials"]["passwords"][1]["value"]
 
     # Generate the .bashrc that needs to existing on the server to assign the
     # token on each startup. TODO: need a better story for generating and
@@ -184,8 +180,7 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
     uri = get_compute_uri(ez, compute_name)
     result = exec_cmd(bashrc, uri=uri, private_key_path=ez.private_key_path,
         description=f"Updating ~/.bashrc on {compute_name}")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
+    exit_on_error(result)
     return result.exit_code
 
 @click.option("--compute-name", "-c", required=True, 
@@ -210,42 +205,31 @@ def __enable_github(ez: Ez,
     uri = get_compute_uri(ez, compute_name)
     result = exec_cmd(cmd, uri=uri, private_key_path=ez.private_key_path,
         description=f"Generating public/private key pair on {compute_name}")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
 
     # cat the public key
     cmd = f"cat /home/{ez.user_name}/.ssh/id_rsa_github.pub"
     result = exec_cmd(cmd, uri=uri, private_key_path=ez.private_key_path,
         description="Reading generated public key")
-
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
     public_key = result.stdout.strip()
 
     # Ensure that github RSA key is in the known-hosts file
 
     # Retrieve the GitHub public key from github.com
     result = exec_cmd("ssh-keyscan -H github.com > /tmp/github.pub")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
 
     # Compute the SHA256 hash of the github.com public key
     result = exec_cmd("ssh-keygen -lf /tmp/github.pub -E sha256")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
 
     # Compare computed SHA256 hash with known github.com public key
     if C.GITHUB_PUBLIC_KEY_SHA256 in result.stdout:
 
         # Append the GitHub public key to known_hosts
         result = exec_cmd("cat /tmp/github.pub >> ~/.ssh/known_hosts")
-        if result.exit_code != 0:
-            printf_err(result.stderr)
-            exit(result.exit_code)
+        exit_on_error(result)
 
         # Test connection with GitHub by trying to SSH using the key
         result = exec_cmd("ssh -T git@github.com")
@@ -281,9 +265,7 @@ Host github.com
     result = exec_cmd(f"cat /home/{ez.user_name}/gh_config "
         f">> /home/{ez.user_name}/.ssh/config", uri=uri, 
         private_key_path=ez.private_key_path)
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    exit_on_error(result)
 
     if manual:
         # Put it on the clipboard 
@@ -305,9 +287,7 @@ Host github.com
                f"--title \"{compute_name}-token\"")
         result = exec_cmd(cmd, 
             description="Registering public key with GitHub")
-        if result.exit_code != 0:
-            printf_err(result.stderr)
-            exit(result.exit_code)
+        exit_on_error(result)
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -331,8 +311,7 @@ def delete(ez: Ez, compute_name):
     description = f"deleting compute node {compute_name}"
     result = exec_cmd((f"az vm delete --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"), description=description)
-    if result.exit_code != 0:
-        printf_err(result.stderr)
+    exit_on_error(result)
     exit(0)
 
 @click.command()
@@ -343,8 +322,9 @@ def ls(ez: Ez):
         f"az vm list -d --resource-group {ez.resource_group} "
         f"--query=\"[?powerState=='VM running'].[name]\" -o tsv"
     )
-    description = f"querying Azure"
-    _, output = exec_command(ez, ls_cmd, description=description)
+    result = exec_cmd(ls_cmd, description=f"Querying Azure")
+    exit_on_error(result)
+    output = result.stdout
 
     # TODO cleanup output
     print("RUNNING VMs (* == current)")
@@ -374,12 +354,9 @@ def start(ez: Ez, compute_name):
     result = exec_cmd(f"az vm start --name {compute_name} "
         f"--resource-group {ez.resource_group}",
         description=f"starting compute node {compute_name}")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
-    else:
-        ez.active_remote_compute = compute_name
-        exit(0)
+    exit_on_error(result)
+    ez.active_remote_compute = compute_name
+    exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to stop")
@@ -391,12 +368,9 @@ def stop(ez: Ez, compute_name):
     result = exec_cmd(f"az vm deallocate --name {compute_name} "
         f"--resource-group {ez.resource_group}",
         description=f"stopping compute node {compute_name}")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
-    else:
-        ez.active_remote_compute = compute_name
-        exit(0)
+    exit_on_error(result)
+    ez.active_remote_compute = compute_name
+    exit(0)
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of VM to ssh into")
@@ -430,20 +404,16 @@ def select(ez: Ez, compute_name, compute_type):
 
     # TODO: implement menu
     if compute_type == "vm":
-        _ = get_vm_size(ez, compute_name)
-
         # Just select the compute node now
         print(f"SELECTING VM {compute_name}")
-        ez.active_remote_compute = compute_name
-        ez.active_remote_compute_type = compute_type
-        ez.active_remote_env = ""
-        exit(0)
     elif compute_type == "k8s":
-        exec_command(ez, f"kubectl config use-context {compute_name}")
-        ez.active_remote_compute = compute_name
-        ez.active_remote_compute_type = compute_type
-        ez.active_remote_env = ""
-        exit(0)
+        result = exec_cmd(f"kubectl config use-context {compute_name}")
+        exit_on_error(result)
+
+    ez.active_remote_compute = compute_name
+    ez.active_remote_compute_type = compute_type
+    ez.active_remote_env = ""
+    exit(0)
 
 @click.command()
 @click.option("--compute-name", "-n", help="Name of compute node")
@@ -465,21 +435,6 @@ def info(ez: Ez, compute_name):
     else:
         printf_err(result.stderr)
         exit(result.exit_code)
-
-    # retcode, out = exec_command(
-    #     ez, 
-    #     f"az vm list-sizes -l {ez.region} --output tsv | grep {compute_size}",
-    #     description=f"querying {compute_name} for details",
-    #     debug=True)
-    # print(out)
-    # if retcode == 0:
-    #     specs = out.split("\t")
-    #     print((
-    #         f"[green]INFO[/green] for {compute_name} size: {specs[2]}: "
-    #         f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB"))
-    # else:
-    #     printf_err(out)
-    # exit(retcode)
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
