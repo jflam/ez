@@ -5,8 +5,8 @@ import json
 import platform
 import shlex
 
-from exec import (exec_command, exec_script_using_ssh, 
-    exec_command_return_dataframe, exec_cmd)
+from exec import (exec_cmd_return_dataframe, exec_cmd, exec_file, 
+    exit_on_error)
 from getpass import getuser
 from ez_state import Ez
 from formatting import format_output_string, printf, printf_err
@@ -137,7 +137,9 @@ def get_compute_size(ez: Ez, compute_name) -> str:
             f"--resource-group {ez.resource_group} "
             f"--query hardwareProfile.vmSize -o tsv"
         )
-        _, compute_size = exec_command(ez, get_compute_size_cmd)
+        result = exec_cmd(get_compute_size_cmd)
+        exit_on_error(result)
+        compute_size = result.stdout
         ez.debug_print(format_output_string(f"result: {compute_size}"))
         return compute_size
     else:
@@ -151,8 +153,8 @@ def is_vm_running(ez: Ez, vm_name) -> bool:
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
         f"grep \"VM running\" > /dev/null"
     )
-    exit_code, _ = exec_command(ez, is_running, False)
-    return True if exit_code == 0 else False
+    result = exec_cmd(is_running)
+    return True if result.exit_code == 0 else False
 
 def jit_activate_vm(ez: Ez, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
@@ -176,8 +178,10 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
         wait_vm_cmd = (
             f"az vm wait --name {vm_name} "
             f"--resource-group {resource_group} --updated")
-        exec_command(ez, start_vm_cmd)
-        exec_command(ez, wait_vm_cmd)
+        result = exec_cmd(start_vm_cmd)
+        exit_on_error(result)
+        result = exec_cmd(wait_vm_cmd)
+        exit_on_error(result)
     else:
         print(f"ALREADY RUNNING virtual machine {vm_name}")
 
@@ -187,7 +191,9 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
 
     ez.debug_print(f"GETTING local IP address...")
     get_my_ip_cmd = "curl -k -s https://ifconfig.me/ip"
-    _, local_ip_address = exec_command(ez, get_my_ip_cmd)
+    result = exec_cmd(get_my_ip_cmd)
+    exit_on_error(result)
+    local_ip_address = result.stdout
     ez.debug_print(f"RESULT: local IP address {local_ip_address}")
 
     ez.debug_print(f"GETTING virtual machine id for {vm_name}...")
@@ -195,8 +201,9 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
         f"az vm show -n {vm_name} -g {resource_group} "
         f"-o tsv --query \"[id, location]\""
     )
-    _, results = exec_command(ez, vm_show_cmd)
-    vm_id, vm_location = results.splitlines()
+    result = exec_cmd(vm_show_cmd)
+    exit_on_error(result)
+    vm_id, vm_location = result.stdout.splitlines()
     ez.debug_print(f"RESULT: virtual machine id {vm_id}")
 
     subscription = ez.subscription
@@ -234,7 +241,9 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
     # Make the REST API call using the az rest cli command
 
     ez.debug_print(f"REQUESTING JIT activation for {vm_name}...")
-    _, output = exec_command(ez, jit_command)
+    result = exec_cmd(jit_command)
+    exit_on_error(result)
+    output = result.stdout
     ez.debug_print(f"RESULT {output}")
 
     # HACKHACK sleep for 3 seconds to allow enough time for JIT activate
@@ -391,13 +400,19 @@ def build_container_image(ez: Ez, env_name, git_uri, jupyter_port, vm_name,
 
     if not is_local:
         ez.debug_print(f"EXECUTING build script on {vm_name}...")
-        exec_script_using_ssh(ez, build_script_path, vm_name, build_cmd)
+        result = exec_file(build_script_path, 
+            uri=get_compute_uri(ez, vm_name), 
+            private_key_path=ez.private_key_path, 
+            description=f"Executing build script on {vm_name}")
+        exit_on_error(result)
     else:
         ez.debug_print(f"EXECUTING build script locally...")
-        exec_command(ez, build_cmd)
+        result = exec_cmd(build_cmd)
+        exit_on_error(result)
 
     ez.debug_print(f"DONE")
 
+# TODO: remove this method
 def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token, 
                             vm_name, has_gpu, force_generate=False, 
                             is_k8s = False) -> str:
@@ -422,7 +437,8 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
     if is_local:
         if not path.exists(path_to_vsc_project):
             print(f"CLONING {git_uri} into {path_to_vsc_project}...")
-            exec_command(ez, f"git clone {git_uri} {repo_name}")
+            result = exec_cmd(f"git clone {git_uri} {repo_name}")
+            exit_on_error(result)
         else:
             print(
                 f"SKIPPING git clone of {git_uri} as there is already a "
@@ -470,9 +486,15 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
             f'mv /tmp/settings.json /home/{ez.user_name}/'
             f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
         )
-        exec_script_using_ssh(ez, remote_settings_json_path, 
-                              vm_name, 
-                              write_settings_json_cmd)
+        # TODO: this isn't supported in exec_file today where we pipe in 
+        # the contents of remote_settings_json_path into the ssh command
+        # in write_settings_json_cmd on the remote machine
+        # This doesn't matter because this method will be deprecated too
+        # result = exec_file(remote_settings_json_path, 
+        #     get_compute_uri(vm_name), private_key_path=)
+        # exec_script_using_ssh(ez, remote_settings_json_path, 
+        #                       vm_name, 
+        #                       write_settings_json_cmd)
     
     return path_to_vsc_project
 
@@ -522,8 +544,9 @@ def enable_jit_access_on_vm(ez: Ez, vm_name: str):
         f"az vm show -n {vm_name} -g {ez.resource_group} "
         f"-o tsv --query \"[id, location]\""
     )
-    _, results = exec_command(ez, vm_show_cmd)
-    vm_id, vm_location = results.splitlines()
+    result = exec_cmd(vm_show_cmd)
+    exit_on_error(result)
+    vm_id, vm_location = result.stdout.splitlines()
     ez.debug_print(f"RESULT: virtual machine id {vm_id}")
 
     # Generate the URI of the JIT activate endpoint REST API
@@ -575,9 +598,10 @@ def enable_jit_access_on_vm(ez: Ez, vm_name: str):
     jit_command=f"az rest --method post --uri {endpoint} --body {body_json}"
     ez.debug_print(f"JIT ENABLE command: {jit_command}")
     print(f"ENABLING JIT activation for {vm_name}...")
-    _, output = exec_command(ez, jit_command)
+    result = exec_cmd(jit_command)
+    exit_on_error(result)
+    output = result.stdout
     ez.debug_print(f"RESULT {output}")
-
 
 def pick_vm(resource_group, show_gpu_only=False):
     """Display a list of VMs from the resource group"""
@@ -587,7 +611,7 @@ def pick_vm(resource_group, show_gpu_only=False):
     options = "Name:name, Size:hardwareProfile.vmSize, Running:powerState"
     cmd = (f"az vm list --resource-group {resource_group} --query "
            f"'[].{{{options}}}' -o tsv --show-details")
-    df = exec_command_return_dataframe(cmd)
+    df = exec_cmd_return_dataframe(cmd)
     df.columns = ["Name", "Size", "Running"]
     df["GPU"] = df["Size"].apply(lambda s: is_gpu(s))
 
@@ -614,10 +638,11 @@ def pick_vm(resource_group, show_gpu_only=False):
     # Return the VM name to caller
     return df.iloc[choice]["Name"]
 
-def get_storage_account_key(ez: Ez, storage_account_name: str) -> str:
+def get_storage_account_key(storage_account_name: str, 
+    resource_group: str) -> str:
     """Retrieve storage account key for current account"""
     cmd = (f"az storage account keys list --resource-group "
-        f"{ez.resource_group} --account-name {storage_account_name} "
+        f"{resource_group} --account-name {storage_account_name} "
         f"--query \"[0].value\" --output json")
     
     result = exec_cmd(cmd, description="Retrieving storage account key")
@@ -636,7 +661,7 @@ def mount_storage_account(ez: Ez,
     smb_path = (f"//{ez.storage_account_name}.file.core.windows.net/"
         f"{ez.file_share_name}")
 
-    key = get_storage_account_key(ez, ez.storage_account_name)
+    key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
 
     # Ensure that the mount directory is created on the server
     cmd = f"mkdir -p {mount_path}"

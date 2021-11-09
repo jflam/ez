@@ -10,7 +10,7 @@ import env_commands
 import workspace_commands
 
 from azutil import get_storage_account_key
-from exec import exec_command_return_dataframe, exec_command
+from exec import exec_cmd, exec_cmd_return_dataframe, exit_on_error
 from ez_state import Ez
 from formatting import printf_err, printf
 from os import system
@@ -97,7 +97,7 @@ def init(ez: Ez):
 
     # Read subscriptions into a pandas dataframe
     cmd = "az account list -o tsv"
-    df = exec_command_return_dataframe(cmd)
+    df = exec_cmd_return_dataframe(cmd)
     df = df.sort_values(by=[5])
 
     # Print out a list of subscriptions for the user to select from
@@ -122,11 +122,11 @@ def init(ez: Ez):
     print(f"Selected {subscription_name}, subscription id: {subscription_id}")
 
     cmd = f"az account set --subscription {subscription_id}"
-    subprocess.run(cmd.split(' '))
+    result = exec_cmd(cmd)
+    exit_on_error(result)
 
-    # Select or create a new workspace
-    # TODO: today this only creates a new resource group, make it select 
-    # in the future
+    # Select or create a new workspace TODO: today this only creates a new
+    # workspace, make it select in the future
     print("\nStep 2/5: Create a new workspace\n")
 
     # Ask for name
@@ -136,7 +136,7 @@ def init(ez: Ez):
     print("\nStep 3/5: Select or create Azure resource group to use\n")
 
     cmd = "az group list -o tsv"
-    df = exec_command_return_dataframe(cmd)
+    df = exec_cmd_return_dataframe(cmd)
     df = df.sort_values(by=[3])
     for i, name in enumerate(df.iloc[:,3]):
         print(f"{i} {name}")
@@ -155,7 +155,7 @@ def init(ez: Ez):
 
         # Ask user to select region
         cmd = "az account list-locations -o tsv"
-        df = exec_command_return_dataframe(cmd)
+        df = exec_cmd_return_dataframe(cmd)
 
         for i, name in enumerate(df.iloc[:,0]):
             print(f"{i} {name}")
@@ -170,12 +170,9 @@ def init(ez: Ez):
         # Create the resource group
         cmd = (f"az group create --location {workspace_region} " 
             f"--resource-group {workspace_resource_group}")
-        result, _ = exec_command(ez, cmd, description=
-            f"creating {workspace_resource_group} in {workspace_region}")
-        if result != 0:
-            print(f"Azure resource group creation failed "
-                  f"with return code {result}")
-            exit(result)
+        result = exec_cmd(cmd, description=f"Creating "
+            "{workspace_resource_group} in {workspace_region}")
+        exit_on_error(result)
 
         # Ask to create an Azure Container Registry
         choice = Prompt.ask("Name of Azure Container Registry to create? "
@@ -186,12 +183,9 @@ def init(ez: Ez):
             cmd = (f"az acr create --resource-group "
                 f"{workspace_resource_group} --name {registry_name} "
                 f"--sku Premium")
-            result, _ = exec_command(ez, cmd, description=
-                f"Creating Premium Azure Container Registry {registry_name}")
-            if result != 0:
-                print(f"Azure Container Registry creation failed "
-                      f"with return code {result}")
-                exit(result)
+            result = exec_cmd(cmd, description=f"Creating Premium Azure "
+                f"Container Registry {registry_name}")
+            exit_on_error(result)
 
         # Ask to create an Azure Storage Account
         choice = Prompt.ask("Name of Azure Storage Account to create? (blank "
@@ -201,30 +195,27 @@ def init(ez: Ez):
             storage_account_name = choice
             cmd = (f"az storage account create --name {storage_account_name} "
                 f"--resource-group {workspace_resource_group}")
-            result, _ = exec_command(ez, cmd, description=
-                f"Creating Azure Storage Account {storage_account_name}")
-            if result != 0:
-                print(f"Azure Storage Account creation failed "
-                      f"with return code {result}")
-                exit(result)
+            result = exec_cmd(cmd, description=f"Creating Azure Storage "
+                f"Account {storage_account_name}")
+            exit_on_error(result)
 
             # Create file share
             choice = Prompt.ask("Create an Azure File Share?", 
                 default="ezdata")
             if choice == "":
+                # TODO: make this loop if empty rather than exiting
                 printf_err("Must create an Azure File Share when creating "
                     "an Azure Storage Account")
                 exit(1)
             else:
                 file_share_name = choice
+                # TODO: prompt about quota size of file share and give user an
+                # option to increase
                 cmd = (f"az storage share-rm create --name {file_share_name} "
                     f"--quota 512 --storage-account {storage_account_name}")
-                result, _ = exec_command(ez, cmd, description=
-                    f"Creating Azure File Share {file_share_name}")
-                if result != 0:
-                    printf_err("Azure File Share creation failed "
-                        f"with return code {result}")
-                    exit(result)
+                result = exec_cmd(cmd, description=f"Creating Azure File "
+                    f"Share {file_share_name}")
+                exit_on_error(result)
     else:
         workspace_resource_group = df.iloc[choice][3]
         workspace_region = df.iloc[choice][1]
@@ -234,7 +225,7 @@ def init(ez: Ez):
         # List Azure Container Registries in this resource group
         cmd = (f"az acr list --resource-group {workspace_resource_group} "
                "-o tsv")
-        df = exec_command_return_dataframe(cmd)
+        df = exec_cmd_return_dataframe(cmd)
         count = df.shape[0]
 
         if count == 0:
@@ -261,7 +252,7 @@ def init(ez: Ez):
         # Discover storage account
         cmd = (f"az storage account list --resource-group "
             f"{workspace_resource_group} -o tsv")
-        df = exec_command_return_dataframe(cmd)
+        df = exec_cmd_return_dataframe(cmd)
         count = df.shape[0]
         if count == 0:
             storage_account_name = ""
@@ -283,14 +274,15 @@ def init(ez: Ez):
             printf(f"Selected storage account {storage_account_name}")
 
         # Discover file share name
-        key = get_storage_account_key(ez, storage_account_name)
+        key = get_storage_account_key(storage_account_name, 
+            workspace_resource_group)
         if key is None:
             printf_err("Could not retrieve storage account key")
             exit(1)
 
         cmd = (f"az storage share list --account-name "
             f"{storage_account_name} --account-key {key} -o tsv")
-        df = exec_command_return_dataframe(cmd)
+        df = exec_cmd_return_dataframe(cmd)
         count = df.shape[0]
 
         if count == 0:
@@ -349,18 +341,15 @@ def init(ez: Ez):
                 break
 
         keypath = os.path.expanduser(f"~/.ssh/{choice}")
-        cmd = f"ssh-keygen -m PEM -t rsa -b 4096 -f {keypath} -q -N"
-        cmdline = cmd.split(' ')
-        cmdline.append('')
-        result = subprocess.run(cmdline)
         keyfile = choice
-        if result.returncode != 0:
-            exit(result.returncode)
+        cmd = f"ssh-keygen -m PEM -t rsa -b 4096 -f {keypath} -q -N"
+        result = exec_cmd(cmd)
+        exit_on_error(result)
     else:
         keyfile = keyfiles[choice]
     
     keyfile_path = os.path.expanduser(f"~/.ssh/{keyfile}")
-    print(f"SSH keyfile: {keyfile}/{keyfile}.pub")
+    printf(f"Using SSH keyfile: {keyfile}/{keyfile}.pub")
 
     # Set the configuration
     ez.workspace_name = workspace_name

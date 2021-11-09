@@ -37,10 +37,12 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
     #     build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
     #                 f"--no-run {path_to_vscode_project}")
     #     print(f"BUILD Docker image locally: {build_cmd}")
-    #     exec_command(ez, build_cmd)
+    #     result = exec_cmd(build_cmd)
+    #     exit_on_error(result)
     #     docker_cmd = (f"docker push jflam/{env_name}")
     #     print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
-    #     exec_command(ez, docker_cmd)
+    #     result = exec_cmd(docker_cmd)
+    #     exit_on_error(result)
 
     # launch_user_interface(ez, user_interface, path_to_vscode_project, 
     #                       jupyter_port, token)
@@ -60,7 +62,8 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
     # # CTRL+C will terminate.
     # print(f"START pod {kdo_cmd}")
     # print("TERMINATE using CTRL+C")
-    # exec_command(ez, kdo_cmd)
+    # result = exec_cmd(kdo_cmd)
+    # exit_on_error(result)
 
 def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
@@ -646,11 +649,10 @@ FROM {ez_json["base_container_image"]}
 # docker cp {ssh_dir}/id_rsa_github /root/.ssh/id_rsa_github && \
 # docker cp {ssh_dir}/id_rsa_github.pub /root/.ssh/id_rsa_github.pub
 # """
-#         result = exec_script_using_ssh(ez, 
-#             compute_name, 
-#             script_text=cmd, 
-#             description="Configure SSH keys for GitHub",
-#             line_by_line=True)
+#         result = exec_file(cmd, uri=get_compute_uri(ez, compute_name), 
+#             private_key_path=ez.private_key_path, 
+#             description="Configure SSH keys for GitHub")
+#         exit_on_error(result)
 #     else:
 #         # Handle local case
 #         printf("handling local case")
