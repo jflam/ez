@@ -266,6 +266,12 @@ Host github.com
         private_key_path=ez.private_key_path)
     exit_on_error(result)
 
+    # Append github.com to the list of known hosts on the server
+    result = exec_cmd("ssh-keyscan -H github.com >> ~/.ssh/known_hosts",
+        uri = get_compute_uri(ez, compute_name), 
+        private_key_path=ez.private_key_path)
+    exit_on_error(result)
+
     if manual:
         # Put it on the clipboard 
         copy_to_clipboard(ez, public_key)
