@@ -3,6 +3,7 @@
 import click
 import constants as C
 import json
+import pandas as pd
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
     jit_activate_vm, get_vm_size, get_active_compute_name, 
@@ -315,28 +316,34 @@ def delete(ez: Ez, compute_name):
     exit(0)
 
 @click.command()
+@click.option("--all", "-a", is_flag=True, default=False,
+              help=("List all (current workspace is default)"))
 @click.pass_obj
-def ls(ez: Ez):
-    """List running compute nodes"""
-    ls_cmd = (
-        f"az vm list -d --resource-group {ez.resource_group} "
-        f"--query=\"[?powerState=='VM running'].[name]\" -o tsv"
-    )
-    result = exec_cmd(ls_cmd, description=f"Querying Azure")
+def ls(ez: Ez, all: bool):
+    """List available compute nodes"""
+    
+    # The information to retrieve for each VM are:
+    # Name, Size, vCPU, RAM, Disk Size, (GPU Config), On/Off
+    if all:
+        cmd = f"az vm list -d -o json"
+    else:
+        cmd = f"az vm list --resource-group {ez.resource_group} -d -o json"
+    result = exec_cmd(cmd, description=f"Querying Azure for a list of VMs")
     exit_on_error(result)
-    output = result.stdout
-
-    # TODO cleanup output
-    print("RUNNING VMs (* == current)")
-    lines = output.splitlines()
-    for line in lines:
-        if line == ez.active_remote_compute:
-            print(f"* [green]{line}[/green]")
-        else:
-            print(f"  {line}")
-
-    print("RUNNING AKS clusters (* == current)")
-    print("...TODO")
+    j = json.loads(result.stdout)
+    df = pd.DataFrame(columns=["Name", "Size", "Region", "State"])
+    for vm in j:
+        name = vm["name"]
+        vm_size = vm["hardwareProfile"]["vmSize"]
+        region = vm["location"]
+        power_state = vm["powerState"]
+        df = df.append({
+            "Name": name,
+            "Size": vm_size,
+            "Region": region, 
+            "State": power_state
+        }, ignore_index=True)
+    print(df)
     exit(0)
 
 @click.command()
