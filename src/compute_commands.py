@@ -46,7 +46,8 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         exit(1)
 
     # Check to see if the compute-name is taken already
-    cmd = f"az vm list -d -o table --query \"[?name=='{compute_name}']\""
+    cmd = (f"az vm list --resource-group {ez.resource_group} -d -o table "
+        f"--query \"[?name=='{compute_name}']\"")
     result = exec_cmd(cmd)
     if result.exit_code != 0:
         # Don't exit on error as failure here will be caught when trying to
@@ -89,12 +90,9 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
-        result = __update_system(ez, compute_name, compute_size)
-        exit_on_error(result)
-        result = __enable_acr(ez, compute_name)
-        exit_on_error(result)
-        result = __enable_github(ez, compute_name)
-        exit_on_error(result)
+        __update_system(ez, compute_name, compute_size)
+        __enable_acr(ez, compute_name)
+        __enable_github(ez, compute_name)
 
         # Ask machine to reboot (need to swallow exception here)
         uri = get_compute_uri(ez, compute_name)
@@ -148,7 +146,7 @@ def __update_system(ez: Ez, compute_name: str,
         private_key_path=ez.private_key_path, description=description)
     return result
 
-def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
+def __enable_acr(ez: Ez, compute_name: str) -> ExecResult:
     """Internal function to enable ACR on compute_name"""
     # Repository name maps to workspace name
     # Environment name maps to tag
@@ -182,7 +180,7 @@ def __enable_acr(ez: Ez, compute_name: str) -> Tuple[int, str]:
     result = exec_cmd(bashrc, uri=uri, private_key_path=ez.private_key_path,
         description=f"Updating ~/.bashrc on {compute_name}")
     exit_on_error(result)
-    return result.exit_code
+    return result
 
 @click.option("--compute-name", "-c", required=True, 
               help="Name of compute to update")
@@ -312,6 +310,12 @@ def delete(ez: Ez, compute_name):
     description = f"deleting compute node {compute_name}"
     result = exec_cmd((f"az vm delete --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"), description=description)
+    exit_on_error(result)
+
+    # Remove this VM from known_hosts as well
+    uri = get_compute_uri(ez, compute_name)
+    result = exec_cmd(f"ssh-keygen -R {uri}", 
+        description=f"Removing {uri} from known_hosts")
     exit_on_error(result)
     exit(0)
 
