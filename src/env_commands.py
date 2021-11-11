@@ -1,6 +1,7 @@
 # env commands
 
-import click, glob, json, os, random, shutil, subprocess, uuid
+import constants as C
+import click, glob, json, os, platform, random, shutil, subprocess, uuid
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
     generate_vscode_project, is_gpu, jit_activate_vm, 
@@ -433,10 +434,17 @@ RUN pip install -v -r requirements.txt
         else:
             pip_install = ""
 
+        # The challenge here for both conda and pip is detecting whether the
+        # base image contains Python or not or whether we should always
+        # install Python onto the image.
         if os.path.exists(f"{devcontainer_dir}/environment.yml"):
-            conda_install = """
+            conda_install = f"""
 COPY environment.yml /tmp/environment.yml
 WORKDIR /tmp
+RUN curl --remote-name {C.MINICONDA_INSTALLER} \\
+    && chmod +x Miniconda3-latest-Linux-x86_64.sh \\
+    && ./Miniconda3-latest-Linux-x86_64.sh -b 
+ENV PATH="/root/miniconda3/bin:$PATH"
 RUN conda env create -f environment.yml
 """
         else:
@@ -445,6 +453,9 @@ RUN conda env create -f environment.yml
         dockerfile = f"""
 FROM {ez_json["base_container_image"]}
 
+RUN apt update \\
+    && apt upgrade -y \\
+    && apt install -y curl build-essential git vim
 {pip_install}
 {conda_install}
     """
@@ -588,7 +599,7 @@ FROM {ez_json["base_container_image"]}
     # Test whether the compute supports GPU or not
     if compute_name == ".":
         printf_err("todo local GPU detection")
-        compute_has_gpu = True # hard code for my computer
+        compute_has_gpu = False # hard code for my computer
     else:
         vm_size = get_vm_size(ez, compute_name)
         compute_has_gpu = is_gpu(vm_size)
@@ -605,11 +616,21 @@ FROM {ez_json["base_container_image"]}
         runargs = ""
 
     if ez.file_share_name is not None:
-        mounts = f"""
-    "mounts": [
-        "source=/home/{ez.user_name}/data,target=/data,type=bind,consistency=cached",
-    ],
-"""
+        if compute_name == ".":
+            if platform.system() == "Darwin" or platform.system() == "Linux":
+                printf_err("Mounting local Azure File Share not currently "
+                    "supported")
+                mounts = ""
+            else:
+                printf_err(f"Unsupported platform for local file share "
+                    f"mount: {platform.system()}")
+                mounts = ""
+        else:
+            mounts = f"""
+        "mounts": [
+            "source=/home/{ez.user_name}/data,target=/data,type=bind,consistency=cached",
+        ],
+    """
     else:
         mounts = ""
 
@@ -632,33 +653,11 @@ FROM {ez_json["base_container_image"]}
     with open(devcontainer_json_path, "w", encoding="utf-8") as f:
         f.write(devcontainer_json)
 
-    # TODO: figure out how to copy these keys into the container AFTER the 
-    # container is running. I can't do this in build, and I don't want to
-    # because you don't want private keys copied into Docker images.
-
-    # TODO: I think that I can get this to work by mapping the host machine
-    # ~/.ssh directory containing the SSH keys into the container's 
-    # /root/.ssh directory. This requires adding a mount command to the
-    # devcontainer.json file.
-
-    # Copy git SSH keys into the container 
-#     if compute_name != ".":
-#         ssh_dir = f"/home/{ez.user_name}/.ssh"
-#         cmd = f"""
-# docker cp {ssh_dir}/config /root/.ssh/config && \
-# docker cp {ssh_dir}/id_rsa_github /root/.ssh/id_rsa_github && \
-# docker cp {ssh_dir}/id_rsa_github.pub /root/.ssh/id_rsa_github.pub
-# """
-#         result = exec_file(cmd, uri=get_compute_uri(ez, compute_name), 
-#             private_key_path=ez.private_key_path, 
-#             description="Configure SSH keys for GitHub")
-#         exit_on_error(result)
-#     else:
-#         # Handle local case
-#         printf("handling local case")
-
     # Mount /data drive
-    mount_path = f"/home/{ez.user_name}/data"
+    if compute_name == ".":
+        mount_path = os.path.expanduser("~/data")
+    else:
+        mount_path = f"/home/{ez.user_name}/data"
     mount_storage_account(ez, compute_name, mount_path)
 
     # Launch the project by launching VS Code using "code .". In the future

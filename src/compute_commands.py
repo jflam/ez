@@ -467,7 +467,4 @@ def mount(ez: Ez, compute_name: str):
     # mount_path = f"/home/{ez.user_name}/src/{env_name}/data"
     mount_path = f"/home/{ez.user_name}/data"
 
-    if mount_storage_account(ez, compute_name, mount_path):
-        exit(0)
-    else:
-        exit(1)
+    exit(mount_storage_account(ez, compute_name, mount_path))

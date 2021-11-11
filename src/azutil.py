@@ -655,22 +655,24 @@ def get_storage_account_key(storage_account_name: str,
 def mount_storage_account(ez: Ez, 
     compute_name: str, 
     mount_path: str, 
-    persistent_mount: bool=False) -> bool:
+    persistent_mount: bool=False) -> int:
     """Generate SMB path name for Azure File Share"""
 
     smb_path = (f"//{ez.storage_account_name}.file.core.windows.net/"
         f"{ez.file_share_name}")
 
-    key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
+    if compute_name != ".":
+        key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
 
     # Ensure that the mount directory is created on the server
     cmd = f"mkdir -p {mount_path}"
-    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
-        ez.private_key_path,
-        description="creating data mount directory on remote compute")
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-        exit(result.exit_code)
+    if compute_name == ".":
+        printf_err("Mounting Azure File Share not currently supported")
+    else:  
+        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+            ez.private_key_path,
+            description="Creating remote data mount directory")
+        exit_on_error(result)
 
     # Mount the Azure File Share onto the VM 
     # TODO: Add a flag that indicates whether we want to mount temporarily 
@@ -680,26 +682,29 @@ def mount_storage_account(ez: Ez,
         raise ValueError("persistent_mount True is not supported yet")
 
     cmd = f"sudo umount {mount_path}"
-    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
-        ez.private_key_path,
-        description="Dismounting Azure File share on remote compute")
+    if compute_name == ".":
+        printf_err("Mounting Azure File Share not currently supported")
+    else:
+        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+            ez.private_key_path,
+            description="Dismounting remote Azure File Share")
+        # File share may not be mounted so we don't exit here
+        if result.exit_code != 0:
+            printf_err(result.stderr)
 
-    # File share may not be mounted so we don't exit here
-    if result.exit_code != 0:
-        printf_err(result.stderr)
+    if compute_name == ".":
+        printf_err("Mounting Azure File Share not currently supported")
+    else:
+        cmd = (f"sudo mount -t cifs {smb_path} {mount_path} "
+            f"-o username={ez.storage_account_name},password={key},serverino,"
+            f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
+        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+            ez.private_key_path,
+            description="Mounting remote Azure File Share")
+        exit_on_error(result)
+        return result.exit_code
 
-    cmd = (f"sudo mount -t cifs {smb_path} {mount_path} "
-        f"-o username={ez.storage_account_name},password={key},serverino,"
-        f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
-    result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
-        ez.private_key_path,
-        description="Mounting Azure File share on remote compute")
-
-    if result.exit_code != 0:
-        printf_err(f"mount failed while running {cmd}")
-        exit(result.exit_code)
-
-    return result.exit_code == 0
+    return 0
 
 def get_compute_uri(ez: Ez, compute_name: str) -> str:
     return f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
