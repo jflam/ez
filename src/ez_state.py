@@ -75,6 +75,8 @@ class Ez(object):
             self.workspace_name = None
             self.resource_group = None 
             self.registry_name = None
+            self.storage_account_name = None
+            self.file_share_name = None
             self.subscription = None
             self.region = None
             self.private_key_path = None
