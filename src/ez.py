@@ -1,6 +1,8 @@
 import click
 import constants as C
+import json
 import os
+import pandas as pd
 import pathlib
 import platform
 import subprocess
@@ -251,13 +253,21 @@ def init(ez: Ez):
 
         # Discover storage account
         cmd = (f"az storage account list --resource-group "
-            f"{workspace_resource_group} -o tsv")
-        df = exec_cmd_return_dataframe(cmd)
+            f"{workspace_resource_group} -o json")
+        result = exec_cmd(cmd)
+        exit_on_error(result)
+        j = json.loads(result.stdout)
+        df = pd.DataFrame(columns=["Name"])
+        for account in j:
+            name = account["name"]
+            df = df.append({
+                "Name": name,
+            }, ignore_index=True)
         count = df.shape[0]
         if count == 0:
             storage_account_name = ""
         elif count == 1:
-            storage_account_name = df.iloc[0][26]
+            storage_account_name = df.iloc[0][0]
         else:
             for i, name in enumerate(df.iloc[:,1]):
                 print(f"{i} {name}")
@@ -268,7 +278,7 @@ def init(ez: Ez):
                 if choice >= 0 and choice < df.shape[0]:
                     break
             
-            storage_account_name = df.iloc[choice][2]
+            storage_account_name = df.iloc[choice][0]
 
         if storage_account_name is not None:
             printf(f"Selected storage account {storage_account_name}")
