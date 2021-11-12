@@ -9,6 +9,8 @@ setup(
                 'compute_commands', 
                 'constants',
                 'ez_state',
+                'exec',
+                'formatting',
                 'azutil'],
     install_requires=['Click', 'rich', 'fabric', 'pandas'],
     data_files=[('scripts', ['scripts/provision-cpu', 
