@@ -363,19 +363,55 @@ def ls(ez: Ez, all: bool):
         cmd = f"az vm list --resource-group {ez.resource_group} -d -o json"
     result = exec_cmd(cmd, description=f"Querying Azure for a list of VMs")
     exit_on_error(result)
+
+    all_vm_sizes = {}
     j = json.loads(result.stdout)
-    df = pd.DataFrame(columns=["Name", "Size", "Region", "State"])
+    df = pd.DataFrame(columns=["Name", "Size", "Resource_Group", "RAM(GB)", 
+        "Cores", "Region", "State"])
     for vm in j:
         name = vm["name"]
         vm_size = vm["hardwareProfile"]["vmSize"]
         region = vm["location"]
+        all_vm_sizes[region] = None
         power_state = vm["powerState"]
+        resource_group = vm["resourceGroup"]
         df = df.append({
             "Name": name,
             "Size": vm_size,
+            "RAM(GB)": "",
+            "Cores": "",
+            "Resource_Group": resource_group,
             "Region": region, 
             "State": power_state
         }, ignore_index=True)
+    
+    # Get VM sizes for each region 
+    # Maybe consider caching these values in the future
+    for region in all_vm_sizes.keys():
+        cmd = f"az vm list-sizes -l {region} --output json"
+        result = exec_cmd(cmd, 
+            description=f"Querying Azure for VM sizes in {region}")
+        exit_on_error(result)
+        vm_sizes = json.loads(result.stdout)
+        vm_sizes_in_region = {}
+        for vm_size in vm_sizes:
+            vm_sizes_in_region[vm_size["name"]] = {
+                "memory": int(int(vm_size["memoryInMb"])/1024),
+                "cores": vm_size["numberOfCores"]
+            }
+        all_vm_sizes[region] = vm_sizes_in_region
+
+    # Lookup VM sizes from each region
+    for i, row in df.iterrows():
+        region = row["Region"]
+        vm_size = row["Size"]
+        if region in all_vm_sizes:
+            region_table = all_vm_sizes[region]
+            if vm_size in region_table:
+                entry = region_table[vm_size]
+                df.at[i, "RAM(GB)"] = entry["memory"]
+                df.at[i, "Cores"] = entry["cores"]
+
     print(df)
     exit(0)
 
