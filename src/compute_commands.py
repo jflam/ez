@@ -18,7 +18,7 @@ from rich import print
 from typing import Tuple
 
 @click.command()
-@click.option("--compute-name", "-n", required=True, 
+@click.option("--compute-name", "-c", required=True, 
               help="Name of compute to create")
 @click.option("--compute-size", "-s", 
               help="Size of Azure VM or '.' for local creation")

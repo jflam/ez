@@ -393,7 +393,7 @@ repo using it. Here's an example:
 1. Create a new ez compute VM. This will create a VM and install GPU
    drivers and Docker.
 
-ez compute create -n ezgpu1 -s Standard_NC6_Promo
+ez compute create -c ezgpu1 -s Standard_NC6_Promo
 
 2. Run a GitHub repo of notebooks using the VM you just created. This may
    take a while to generate the Docker container image needed to run that 
