@@ -106,8 +106,6 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
-        # TODO: add the system to known_hosts securely (how?) to make sure
-        # that we don't 
         __update_system(ez, compute_name, compute_size)
         __enable_acr(ez, compute_name)
         __enable_github(ez, compute_name)
@@ -305,9 +303,12 @@ Host github.com
         with open(f"/tmp/id_rsa_github.pub", "w") as f:
             f.write(public_key)
             
-        # pass tmp file to gh cli
+        # Register this public key with GitHub and ensure that the GitHub
+        # title (displayed in https://github.com/settings/keys) contains the
+        # fully-qualified name of the VM to make it easier to GC keys as
+        # GitHub doesn't provide a way to programmatically remove SSH keys.
         cmd = (f"gh ssh-key add /tmp/id_rsa_github.pub "
-               f"--title \"{compute_name}-token\"")
+               f"--title \"{compute_name}.{ez.region}.cloudapp.azure.com\"")
         result = exec_cmd(cmd, 
             description="Registering public key with GitHub")
         exit_on_error(result)
@@ -336,11 +337,15 @@ def delete(ez: Ez, compute_name):
         f"--resource-group {ez.resource_group}"), description=description)
     exit_on_error(result)
 
-    # Remove this VM from known_hosts as well
+    # Remove this VM from known_hosts 
     uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     result = exec_cmd(f"ssh-keygen -R {uri}", 
         description=f"Removing {uri} from known_hosts")
     exit_on_error(result)
+
+    # NOTE: GitHub does not provide programmatic access to remove SSH keys
+    # from GitHub, so we may need to improve the experience on this end to
+    # make it easier for people to "GC" their GitHub keys.
     exit(0)
 
 @click.command()
