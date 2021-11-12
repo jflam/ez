@@ -7,7 +7,7 @@ from exec import exec_cmd_local, exec_cmd_remote, exec_cmd, exec_file
 # ez compute create -n eztestvm -s Standard_B1s
 
 TEST_USER = "ezuser"
-TEST_HOST = "eztestvm.southcentralus.cloudapp.azure.com"
+TEST_HOST = "eztestvm.westus2.cloudapp.azure.com"
 TEST_URI = f"{TEST_USER}@{TEST_HOST}"
 TEST_KEY = os.path.expanduser("~/.ssh/id_rsa_azure")
 

@@ -3,11 +3,12 @@
 import click
 import constants as C
 import json
+import os
 import pandas as pd
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
     jit_activate_vm, get_vm_size, get_active_compute_name, 
-    mount_storage_account, get_compute_uri)
+    mount_storage_account, get_compute_uri, get_host_ecdsa_key)
 from exec import ExecResult, exec_cmd, exec_file, exit_on_error
 from ez_state import Ez
 from fabric import Connection
@@ -87,9 +88,26 @@ def create(ez: Ez, compute_name, compute_size, compute_type, image,
         if no_install:
             exit(0)
 
+        # Once the VM is created, we need to trust the created VM. This
+        # requires that we use a trusted code-path to retrieve the host ECDSA
+        # key of the newly-created VM and add that to the known_hosts list in
+        # ~/.ssh/known_hosts. We will use the Azure CLI to invoke a script
+        # on the server that will return the host's ECDSA key. We will then
+        # append that to the known_hosts file.
+        # Unfortunately, this is a very slow code path for some reason and
+        # it takes ~30s to retrieve the host's ECDSA key.
+
+        host_key = get_host_ecdsa_key(ez, compute_name)
+        hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+        
+        with open(os.path.expanduser("~/.ssh/known_hosts"), "a") as f:
+            f.write(f"{hostname} {host_key}")
+
         # TODO: analyze output for correct flags
         enable_jit_access_on_vm(ez, compute_name)
 
+        # TODO: add the system to known_hosts securely (how?) to make sure
+        # that we don't 
         __update_system(ez, compute_name, compute_size)
         __enable_acr(ez, compute_name)
         __enable_github(ez, compute_name)
@@ -319,7 +337,7 @@ def delete(ez: Ez, compute_name):
     exit_on_error(result)
 
     # Remove this VM from known_hosts as well
-    uri = get_compute_uri(ez, compute_name)
+    uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
     result = exec_cmd(f"ssh-keygen -R {uri}", 
         description=f"Removing {uri} from known_hosts")
     exit_on_error(result)
@@ -468,3 +486,11 @@ def mount(ez: Ez, compute_name: str):
     mount_path = f"/home/{ez.user_name}/data"
 
     exit(mount_storage_account(ez, compute_name, mount_path))
+
+@click.command()
+@click.option("--compute-name", "-c", help="Name of host to get key from")
+@click.pass_obj
+def get_host_key(ez: Ez, compute_name):
+    """Retrieve the ECDSA host key of compute_name"""
+    key = get_host_ecdsa_key(ez, compute_name)
+    print(key)

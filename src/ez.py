@@ -450,6 +450,7 @@ compute.add_command(compute_commands.update_system)
 compute.add_command(compute_commands.enable_acr)
 compute.add_command(compute_commands.enable_github)
 compute.add_command(compute_commands.mount)
+compute.add_command(compute_commands.get_host_key)
 
 # environment sub-commands
 

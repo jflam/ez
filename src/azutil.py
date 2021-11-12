@@ -3,6 +3,7 @@
 import datetime
 import json
 import platform
+import re
 import shlex
 
 from exec import (exec_cmd_return_dataframe, exec_cmd, exec_file, 
@@ -708,3 +709,15 @@ def mount_storage_account(ez: Ez,
 
 def get_compute_uri(ez: Ez, compute_name: str) -> str:
     return f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
+
+def get_host_ecdsa_key(ez: Ez, compute_name: str) -> str:
+    cmd = (f"az vm run-command invoke -g {ez.resource_group} "
+        f"-n {compute_name} --command-id RunShellScript "
+        f"--scripts 'cat /etc/ssh/ssh_host_ecdsa_key.pub' --output json")
+    result = exec_cmd(cmd, 
+        description=f"Retrieving ECDSA host key for {compute_name}")
+    exit_on_error(result)
+    j = json.loads(result.stdout)
+    message = j["value"][0]["message"]
+    key = re.findall(r'.*(ecdsa-sha2-nistp256\s.*?)\s.*', message)[0]
+    return key
