@@ -21,23 +21,14 @@ bash Miniconda3-latest-Linux-x86_64.sh -b
 # Configure conda into current bash
 echo 'eval "$(~/miniconda3/bin/conda shell.bash hook)"' >> ~/.bashrc
 
+# Do the same thing but within this session
+eval "$(~/miniconda3/bin/conda shell.bash hook)"
+
 # Generate SSH keys for accessing Azure and GitHub
 # You will need to enter passphrases for these
 # TODO: remove the -q -N flags later once we figure out passphrase management
 ssh-keygen -t ed25519 -C "Github key" -f ~/.ssh/id_rsa_github -q -N ""
-ssh-keygen -t ed25519 -C "Azure key" -f ~/.ssh/id_rsa_azure -q -N ""
-
-# # Start SSH agent
-# eval "$(ssh-agent -s)"
-
-# # Add generated SSH keys to ssh-agent to enable passphrase-free login
-# # ez depends on passphrase-free login
-# ssh-add ~/.ssh/id_rsa_github
-# ssh-add ~/.ssh/id_rsa_azure
-
-# Add the keys to keychain (user will be prompted once per session)
-# eval `keychain --eval --agents ssh id_rsa_github`
-# eval `keychain --eval --agents ssh id_rsa_azure`
+ssh-keygen -t rsa -b 4096 -C "Azure key" -f ~/.ssh/id_rsa_azure -q -N ""
 
 # Map the keys to the appropriate domains
 cat > ~/.ssh/config << EOF
@@ -76,3 +67,6 @@ python setup.py install
 
 # Initialize ez
 ez init
+
+# Reload bash environment
+exec bash
