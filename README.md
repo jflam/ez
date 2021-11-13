@@ -16,8 +16,10 @@ installed with WSL 2 integrations enabled. You can learn more about installing
 [WSL 2 from the Windows Store from
 here](https://devblogs.microsoft.com/commandline/a-preview-of-wsl-in-the-microsoft-store-is-now-available/).
 
-`curl --remote-name https://gist.githubusercontent.com/jflam/bb75d1172607eba59edfec0157fa724b/raw/f4fdee178235d9a658be47ba1efd708b03e2d968/preinstall-ubuntu.sh`
-`bash preinstall-ubuntu.sh`
+```sh
+curl --remote-name https://gist.githubusercontent.com/jflam/bb75d1172607eba59edfec0157fa724b/raw/f4fdee178235d9a658be47ba1efd708b03e2d968/preinstall-ubuntu.sh
+bash preinstall-ubuntu.sh
+```
 
 This script does the following things:
 
