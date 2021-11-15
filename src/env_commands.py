@@ -1,11 +1,8 @@
-# env commands
-
+import click, glob, json, os, random, shutil, subprocess, uuid
 import constants as C
-import click, glob, json, os, random, shutil
-import subprocess, uuid
 
-from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
-    generate_vscode_project, is_gpu, jit_activate_vm, 
+from azutil import (build_container_image, get_vm_size, launch_vscode, 
+    pick_vm, generate_vscode_project, is_gpu, jit_activate_vm, 
     get_active_compute_name, get_compute_size, mount_storage_account,
     get_compute_uri)
 from exec import exec_cmd, exit_on_error
