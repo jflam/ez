@@ -1,7 +1,8 @@
 # env commands
 
 import constants as C
-import click, glob, json, os, platform, random, shutil, subprocess, uuid
+import click, getpass, glob, json, os, platform, random, shutil
+import subprocess, uuid
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
     generate_vscode_project, is_gpu, jit_activate_vm, 
@@ -617,20 +618,15 @@ RUN apt update \\
 
     if ez.file_share_name is not None:
         if compute_name == ".":
-            if platform.system() == "Darwin" or platform.system() == "Linux":
-                printf_err("Mounting local Azure File Share not currently "
-                    "supported")
-                mounts = ""
-            else:
-                printf_err(f"Unsupported platform for local file share "
-                    f"mount: {platform.system()}")
-                mounts = ""
+            data_dir = os.path.expanduser("~/data")
         else:
-            mounts = f"""
-        "mounts": [
-            "source=/home/{ez.user_name}/data,target=/data,type=bind,consistency=cached",
-        ],
-    """
+            data_dir = f"/home/{ez.user_name}/data"
+
+        mounts = f"""
+    "mounts": [
+        "source={data_dir},target=/data,type=bind,consistency=cached",
+    ],
+"""
     else:
         mounts = ""
 
@@ -674,3 +670,4 @@ RUN apt update \\
     ez.active_remote_compute = compute_name
     if compute_name != ".":
         ez.active_remote_compute_type = "vm"
+    exit(0)
