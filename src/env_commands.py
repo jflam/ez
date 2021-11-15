@@ -1,7 +1,7 @@
 # env commands
 
 import constants as C
-import click, getpass, glob, json, os, platform, random, shutil
+import click, glob, json, os, random, shutil
 import subprocess, uuid
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, pick_vm, 
@@ -599,8 +599,9 @@ RUN apt update \\
 
     # Test whether the compute supports GPU or not
     if compute_name == ".":
-        printf_err("todo local GPU detection")
-        compute_has_gpu = False # hard code for my computer
+        # Check if nvidia-smi is on command line as a crude check
+        returncode = os.system(f"which nvidia-smi > /dev/null")
+        compute_has_gpu = returncode == 0
     else:
         vm_size = get_vm_size(ez, compute_name)
         compute_has_gpu = is_gpu(vm_size)
