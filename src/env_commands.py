@@ -306,6 +306,11 @@ def up(ez: Ez, compute_name, env_name):
         exit_on_error(result)
         patch_file = "changes.patch"
 
+    # TODO: env go against this remote compute
+    # git_remote_uri is git_uri
+    # compute_name is compute_name
+    # env_name is imputed
+
     printf(f"Starting {git_remote_uri} on {compute_name}")
     jupyter_port = 1235
     token = "1234"
@@ -321,43 +326,8 @@ def up(ez: Ez, compute_name, env_name):
     launch_vscode(ez, path_to_vscode_project)
     exit(0)
 
-@click.command()
-@click.option("--git-uri", "-g", required=True, 
-              help="URI of git repo to load in the environment")
-@click.option("--compute-name", "-c", required=False,
-              help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=False,
-              help="Environment name to start")
-@click.option("--use-acr", is_flag=True, default=False,
-              help="Generate container using Azure Container Registry")
-@click.option("--build", is_flag=True, default=False,
-              help="When used with --use-acr forces a build of the container")
-@click.pass_obj
-def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool):
-    """New experimental version of the run command that will remove the need
-    to have repo2docker installed."""
-
-    # If compute name is "-" OR there is no active compute defined, prompt
-    # the user to select (or create) a compute
-    if compute_name == "-":
-        print("Select which VM to use from this list of VMs provisioned "
-              f"in resource group {ez.resource_group}")
-        compute_name = pick_vm(ez.resource_group)
-    elif not compute_name:
-        # Use the current compute_name or prompt if none defined
-        if not ez.active_remote_compute:
-            print("Select which VM to use from this list of VMs provisioned "
-                f"in resource group {ez.resource_group}")
-            compute_name = pick_vm(ez.resource_group)
-        else:
-            compute_name = ez.active_remote_compute
-    else:
-        printf(f"using {compute_name} to run {git_uri}", indent=2)
-
-    if env_name is None:
-        env_name = git_uri.split("/")[-1]
-        printf(f"using {env_name} (repo name) as the env name", indent=2)
-
+def __go(ez: Ez, git_uri: str, compute_name: str, env_name: str, 
+    use_acr: bool=False, build: bool=False, mount_drive: bool=False):
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
 
@@ -648,11 +618,12 @@ RUN apt update \\
         f.write(devcontainer_json)
 
     # Mount /data drive
-    if compute_name == ".":
-        mount_path = os.path.expanduser("~/data")
-    else:
-        mount_path = f"/home/{ez.user_name}/data"
-    mount_storage_account(ez, compute_name, mount_path)
+    if mount_drive:
+        if compute_name == ".":
+            mount_path = os.path.expanduser("~/data")
+        else:
+            mount_path = f"/home/{ez.user_name}/data"
+        mount_storage_account(ez, compute_name, mount_path)
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
@@ -668,4 +639,46 @@ RUN apt update \\
     ez.active_remote_compute = compute_name
     if compute_name != ".":
         ez.active_remote_compute_type = "vm"
+
+@click.command()
+@click.option("--git-uri", "-g", required=True, 
+              help="URI of git repo to load in the environment")
+@click.option("--compute-name", "-c", required=False,
+              help="Compute name to migrate the environment to")
+@click.option("--env-name", "-n", required=False,
+              help="Environment name to start")
+@click.option("--use-acr", is_flag=True, default=False,
+              help="Generate container using Azure Container Registry")
+@click.option("--build", is_flag=True, default=False,
+              help="When used with --use-acr forces a build of the container")
+@click.option("--mount", is_flag=True, default=False,
+              help="Mount Azure File Storage into this environment")
+@click.pass_obj
+def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool, 
+    mount: bool):
+    """New experimental version of the run command that will remove the need
+    to have repo2docker installed."""
+
+    # If compute name is "-" OR there is no active compute defined, prompt
+    # the user to select (or create) a compute
+    if compute_name == "-":
+        print("Select which VM to use from this list of VMs provisioned "
+              f"in resource group {ez.resource_group}")
+        compute_name = pick_vm(ez.resource_group)
+    elif not compute_name:
+        # Use the current compute_name or prompt if none defined
+        if not ez.active_remote_compute:
+            print("Select which VM to use from this list of VMs provisioned "
+                f"in resource group {ez.resource_group}")
+            compute_name = pick_vm(ez.resource_group)
+        else:
+            compute_name = ez.active_remote_compute
+    else:
+        printf(f"using {compute_name} to run {git_uri}", indent=2)
+
+    if env_name is None:
+        env_name = git_uri.split("/")[-1]
+        printf(f"using {env_name} (repo name) as the env name", indent=2)
+
+    __go(ez, git_uri, compute_name, env_name, use_acr, build, mount)
     exit(0)
