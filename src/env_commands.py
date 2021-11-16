@@ -1,4 +1,4 @@
-import click, glob, json, os, random, shutil, subprocess, uuid
+import click, getpass, glob, json, os, random, shutil, subprocess, uuid
 import constants as C
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, 
@@ -412,7 +412,7 @@ WORKDIR /tmp
 RUN curl --remote-name {C.MINICONDA_INSTALLER} \\
     && chmod +x Miniconda3-latest-Linux-x86_64.sh \\
     && ./Miniconda3-latest-Linux-x86_64.sh -b 
-ENV PATH="/root/miniconda3/bin:$PATH"
+ENV PATH="/home/{getpass.getuser()}/miniconda3/bin:$PATH"
 RUN conda env create -f environment.yml
 """
         else:
@@ -569,6 +569,8 @@ RUN apt update \\
         # Check if nvidia-smi is on command line as a crude check
         returncode = os.system(f"which nvidia-smi > /dev/null")
         compute_has_gpu = returncode == 0
+        # HACK: false for the demo
+        # compute_has_gpu = False
     else:
         vm_size = get_vm_size(ez, compute_name)
         compute_has_gpu = is_gpu(vm_size)
@@ -577,9 +579,13 @@ RUN apt update \\
         printf(f"warning: repo requires a GPU and {compute_name} "
                 "does not have one")
     if requires_gpu and compute_has_gpu:
+        # TODO: figure out how to right-size the --shm-size parameter
+        # perhaps this means that we must let the user specify and default
+        # to a reasonable value? What is clear is that --ipc=host is not a 
+        # good idea as that requires the container to be run as root!
         runargs = """
         "--gpus=all",
-        "--ipc=host",
+        "--shm-size=1g",
 """
     else:
         runargs = ""
@@ -587,12 +593,15 @@ RUN apt update \\
     if ez.file_share_name is not None:
         if compute_name == ".":
             data_dir = os.path.expanduser("~/data")
+            ssh_dir = os.path.expanduser("~/.ssh")
         else:
             data_dir = f"/home/{ez.user_name}/data"
+            ssh_dir = f"/home/{ez.user_name}/.ssh"
 
         mounts = f"""
     "mounts": [
         "source={data_dir},target=/data,type=bind,consistency=cached",
+        "source={ssh_dir},target=/home/{getpass.getuser()}/.ssh,type=bind,consistency=cached,readonly",
     ],
 """
     else:
@@ -601,7 +610,7 @@ RUN apt update \\
     devcontainer_json = f"""
 {{
     {docker_source}
-    "containerUser": "root",
+    "containerUser": "{getpass.getuser()}",
     "workspaceFolder": "/workspace",
     "workspaceMount": "source={mount_path},target=/workspace,type=bind,consistency=cached",
     {mounts}
