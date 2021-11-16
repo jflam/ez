@@ -22,7 +22,7 @@ def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project,
 
 def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
-    """Run the environment in Kubernetes"""
+    """DEPRECATED"""
     printf_err("k8s support needs reimplementation")
     exit(1)
 
@@ -66,7 +66,7 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
 
 def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
-    """Run the environment in a VM"""
+    """DEPRECATED"""
     build_container_image(ez, env_name, git_uri, jupyter_port, compute_name,
                           user_interface, git_clone)
     path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
@@ -95,7 +95,7 @@ def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
 @click.pass_obj
 def run(ez: Ez, env_name, git_uri, user_interface, compute_name, git_clone, 
         force_generate):
-    """Create and run an environment"""
+    """DEPRECATED"""
     printf_err("deprecated: Use ez env go instead")
     exit(0)
 
@@ -665,8 +665,7 @@ RUN apt update \\
 @click.pass_obj
 def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool, 
     mount: bool):
-    """New experimental version of the run command that will remove the need
-    to have repo2docker installed."""
+    """Create and run an environment"""
 
     # If compute name is "-" OR there is no active compute defined, prompt
     # the user to select (or create) a compute

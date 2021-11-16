@@ -459,10 +459,9 @@ def env():
     """Manage environments"""
     pass
 
-env.add_command(env_commands.run)
-env.add_command(env_commands.ls)
+# env.add_command(env_commands.ls)
 env.add_command(env_commands.cp)
 env.add_command(env_commands.ssh)
-env.add_command(env_commands.stop)
+# env.add_command(env_commands.stop)
 env.add_command(env_commands.up)
 env.add_command(env_commands.go)
