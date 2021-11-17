@@ -663,7 +663,7 @@ def mount_storage_account(ez: Ez,
 
     # Retrieve the storage account key and urlencode it
     key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
-    key = urllib.parse.quote_plus(key)
+    quoted_key = urllib.parse.quote_plus(key)
 
     # Ensure that the mount directory is created on the server
     cmd = f"mkdir -p {mount_path}"
@@ -687,7 +687,7 @@ def mount_storage_account(ez: Ez,
         client_os = platform.system()
         if client_os == "Darwin":
             cmd = (f"mount_smbfs -d 0777 -f 0777 //{ez.storage_account_name}:"
-                f"{key}@{ez.storage_account_name}."
+                f"{quoted_key}@{ez.storage_account_name}."
                 f"file.core.windows.net/{ez.file_share_name} {mount_path}")
         elif client_os == "Linux":
             cmd = (f"sudo mount -t cifs //{ez.storage_account_name}."

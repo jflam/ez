@@ -570,7 +570,7 @@ RUN apt update \\
         returncode = os.system(f"which nvidia-smi > /dev/null")
         compute_has_gpu = returncode == 0
         # HACK: false for the demo
-        # compute_has_gpu = False
+        compute_has_gpu = False
     else:
         vm_size = get_vm_size(ez, compute_name)
         compute_has_gpu = is_gpu(vm_size)
