@@ -598,9 +598,14 @@ RUN apt update \\
             data_dir = f"/home/{ez.user_name}/data"
             ssh_dir = f"/home/{ez.user_name}/.ssh"
 
+        if mount_drive:
+            data_mount = f"\"source={data_dir},target=/data,type=bind,consistency=cached\","
+        else:
+            data_mount = ""
+
         mounts = f"""
     "mounts": [
-        "source={data_dir},target=/data,type=bind,consistency=cached",
+        {data_mount}
         "source={ssh_dir},target=/home/{getpass.getuser()}/.ssh,type=bind,consistency=cached,readonly",
     ],
 """
