@@ -490,7 +490,7 @@ RUN apt update \\
 
         # printf("Generating .vscode/settings.json")
         ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}"
-                          ".cloudapp.azure.com")
+            ".cloudapp.azure.com")
         settings_json = f"""
 {{
     "docker.host": "ssh://{ssh_connection}",
@@ -510,7 +510,7 @@ RUN apt update \\
         # docker.host key from an existing settings.json file if it is there
         vscode_dir = f"{local_env_path}/.vscode"
         if os.path.exists(vscode_dir):
-            if os.path.exists("settings.json"):
+            if os.path.exists(f"{vscode_dir}/settings.json"):
                 os.remove(f"{vscode_dir}/settings.json")
 
     # Generate the devcontainer.json file. Much of this will eventually be
@@ -576,8 +576,8 @@ RUN apt update \\
         compute_has_gpu = is_gpu(vm_size)
 
     if requires_gpu and not compute_has_gpu:
-        printf(f"warning: repo requires a GPU and {compute_name} "
-                "does not have one")
+        printf(f"Warning: repo requires a GPU and {compute_name} "
+            "does not have one", indent=2)
     if requires_gpu and compute_has_gpu:
         # TODO: figure out how to right-size the --shm-size parameter
         # perhaps this means that we must let the user specify and default

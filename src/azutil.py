@@ -6,6 +6,7 @@ import json
 import platform
 import re
 import shlex
+import urllib.parse
 
 from exec import (exec_cmd_return_dataframe, exec_cmd, exec_file, 
     exit_on_error)
@@ -660,10 +661,9 @@ def mount_storage_account(ez: Ez,
     persistent_mount: bool=False) -> int:
     """Generate SMB path name for Azure File Share"""
 
-    smb_path = (f"//{ez.storage_account_name}.file.core.windows.net/"
-        f"{ez.file_share_name}")
-
+    # Retrieve the storage account key and urlencode it
     key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
+    key = urllib.parse.quote_plus(key)
 
     # Ensure that the mount directory is created on the server
     cmd = f"mkdir -p {mount_path}"
@@ -683,32 +683,32 @@ def mount_storage_account(ez: Ez,
     if persistent_mount:
         raise ValueError("persistent_mount True is not supported yet")
 
-    cmd = f"sudo umount {mount_path}"
     if compute_name == ".":
-        result = exec_cmd(cmd, 
-        description="Dismounting local Azure File Share")
-    else:
-        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
-            ez.private_key_path,
-            description="Dismounting remote Azure File Share")
-    # File share may not be mounted so we don't exit here
-    if result.exit_code != 0:
-        printf_err(result.stderr)
-
-    if compute_name == ".":
-        cmd = (f"sudo mount -t cifs {smb_path} {mount_path} "
-            f"-o username={ez.storage_account_name},password={key},serverino,"
-            f"uid={getpass.getuser()},file_mode=0777,dir_mode=0777")
+        client_os = platform.system()
+        if client_os == "Darwin":
+            cmd = (f"mount_smbfs -d 0777 -f 0777 //{ez.storage_account_name}:"
+                f"{key}@{ez.storage_account_name}."
+                f"file.core.windows.net/{ez.file_share_name} {mount_path}")
+        elif client_os == "Linux":
+            cmd = (f"sudo mount -t cifs //{ez.storage_account_name}."
+                f"file.core.windows.net/{ez.file_share_name} {mount_path} "
+                f"-o username={ez.storage_account_name},password={key},"
+                f"serverino,uid={getpass.getuser()},file_mode=0777,"
+                f"dir_mode=0777")
+        else:
+            printf_err(f"Trying to mount on unsupported system {client_os}")
+            exit(1)
         result = exec_cmd(cmd,
-        description="Mounting local Azure File Share")
+            description="Mounting local Azure File Share")
     else:
-        cmd = (f"sudo mount -t cifs {smb_path} {mount_path} "
+        cmd = (f"sudo mount -t cifs //{ez.storage_account_name}."
+            f"file.core.windows.net/{ez.file_share_name} {mount_path} "
             f"-o username={ez.storage_account_name},password={key},serverino,"
             f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
         result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
             ez.private_key_path,
             description="Mounting remote Azure File Share")
-    exit_on_error(result)
+    # exit_on_error(result)
     return result.exit_code
 
 def get_compute_uri(ez: Ez, compute_name: str) -> str:
