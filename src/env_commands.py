@@ -289,45 +289,32 @@ def up(ez: Ez, compute_name, env_name):
     patch_file = None
     result = exec_cmd('git status | grep "Changes not staged for commit"')
     if result.exit_code == 0:
-        printf("Stashing uncommitted changes")
         result = exec_cmd("git stash")
         exit_on_error(result)
-        result = exec_cmd("git stash show -p --binary > ~/tmp/changes.patch")
+        result = exec_cmd("git stash show -p --binary > ~/tmp/changes.patch",
+            description="Stashing uncommitted changes")
         exit_on_error(result)
 
-        printf(f"Copying changes.patch to {compute_name}")
         scp_cmd = (
             f"scp -i {ez.private_key_path} "
             f"~/tmp/changes.patch "
             f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com:"
-            f"/home/{ez.user_name}/tmp/changes.patch"
+            f"/home/{ez.user_name}/changes.patch"
         )
-        result = exec_cmd(scp_cmd)
+        result = exec_cmd(scp_cmd, 
+            description=f"Copying changes to {compute_name}")
         exit_on_error(result)
         patch_file = "changes.patch"
 
-    # TODO: env go against this remote compute
-    # git_remote_uri is git_uri
-    # compute_name is compute_name
-    # env_name is imputed
+    env_name = git_remote_uri.split("/")[-1]
+    __go(ez, git_remote_uri, compute_name, env_name, mount_drive=True, 
+        patch_file=patch_file)
 
-    printf(f"Starting {git_remote_uri} on {compute_name}")
-    jupyter_port = 1235
-    token = "1234"
-    compute_size = get_compute_size(ez, compute_name)
-    has_gpu = is_gpu(compute_size)
-    build_container_image(ez, env_name, git_remote_uri, jupyter_port,
-                          compute_name, "code", True, patch_file)
-    path_to_vscode_project = generate_vscode_project(ez, getcwd(),
-                                                     git_remote_uri,
-                                                     jupyter_port, token,
-                                                     compute_name, has_gpu, 
-                                                     True)
-    launch_vscode(ez, path_to_vscode_project)
     exit(0)
 
 def __go(ez: Ez, git_uri: str, compute_name: str, env_name: str, 
-    use_acr: bool=False, build: bool=False, mount_drive: bool=False):
+    use_acr: bool=False, build: bool=False, mount_drive: bool=False,
+    patch_file: str=None):
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
 
@@ -479,6 +466,14 @@ RUN apt update \\
             private_key_path=ez.private_key_path,
             description=description)
 
+        # Apply the patch file if it exists on the server
+        if patch_file is not None:
+            cmd = (f"pushd {remote_env_path} && git apply "
+                f"/home/{ez.user_name}/{patch_file} && popd")
+            result = exec_cmd(cmd, uri=get_compute_uri(ez, compute_name), 
+                private_key_path=ez.private_key_path, 
+                description=f"Applying patch file: {patch_file}")
+
         # The .vscode directory contains a dynamically generated settings.json
         # file which points to the VM that the remote container will run on.
 
@@ -556,11 +551,11 @@ RUN apt update \\
             exit(1)
         docker_source=f"""
     "image": "{ez.registry_name}.azurecr.io/{ez.workspace_name}:{env_name}",
-"""
+""".strip()
     else:
         docker_source=f"""
     "dockerFile": "./Dockerfile",
-"""
+""".strip()
 
     requires_gpu = ez_json["requires_gpu"]
 
@@ -586,38 +581,46 @@ RUN apt update \\
         runargs = """
         "--gpus=all",
         "--shm-size=1g",
-"""
+""".strip()
     else:
         runargs = ""
 
-    if ez.file_share_name is not None:
+    if compute_name == ".":
+        container_user = getpass.getuser()
+        ssh_dir = os.path.expanduser("~/.ssh")
+    else:
+        container_user = ez.user_name
+        ssh_dir = f"/home/{ez.user_name}/.ssh"
+    
+    ssh_target = f"/home/{container_user}/.ssh"
+    ssh_mount = (f"\"source={ssh_dir},target={ssh_target},"
+        f"type=bind,consistency=cached,readonly\",")
+
+    if mount_drive and ez.file_share_name is not None:
         if compute_name == ".":
             data_dir = os.path.expanduser("~/data")
-            ssh_dir = os.path.expanduser("~/.ssh")
         else:
             data_dir = f"/home/{ez.user_name}/data"
-            ssh_dir = f"/home/{ez.user_name}/.ssh"
-
-        if mount_drive:
-            data_mount = f"\"source={data_dir},target=/data,type=bind,consistency=cached\","
-        else:
-            data_mount = ""
-
-        mounts = f"""
-    "mounts": [
-        {data_mount}
-        "source={ssh_dir},target=/home/{getpass.getuser()}/.ssh,type=bind,consistency=cached,readonly",
-    ],
-"""
+        data_mount = (f"\"source={data_dir},target=/data,type=bind,"
+            f"consistency=cached\",")
     else:
-        mounts = ""
+        data_mount = ""
 
+    mounts = f"""
+    "mounts": [
+        {ssh_mount}
+        {data_mount}
+    ],
+""".strip()
+
+    workspace_mount = (f"\"source={mount_path},target=/workspace,type=bind,"
+        "consistency=cached\"")
     devcontainer_json = f"""
 {{
     {docker_source}
-    "containerUser": "{getpass.getuser()}",
+    "containerUser": "{container_user}",
     "workspaceFolder": "/workspace",
-    "workspaceMount": "source={mount_path},target=/workspace,type=bind,consistency=cached",
+    "workspaceMount": {workspace_mount},
     {mounts}
     "extensions": [
         "ms-python.python",
