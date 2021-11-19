@@ -313,7 +313,7 @@ def up(ez: Ez, compute_name, env_name):
     exit(0)
 
 def __go(ez: Ez, git_uri: str, compute_name: str, env_name: str, 
-    use_acr: bool=False, build: bool=False, mount_drive: bool=False,
+    use_acr: bool=False, build: bool=False, mount: str="none",
     patch_file: str=None):
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
@@ -382,8 +382,7 @@ def __go(ez: Ez, git_uri: str, compute_name: str, env_name: str,
         # requirements.txt or an environment.yml file in the /build directory
         if os.path.exists(f"{devcontainer_dir}/requirements.txt"):
             pip_install = """
-COPY requirements.txt /tmp/requirements.txt
-WORKDIR /tmp
+COPY requirements.txt .
 RUN pip install -v -r requirements.txt
 """
         else:
@@ -394,12 +393,11 @@ RUN pip install -v -r requirements.txt
         # install Python onto the image.
         if os.path.exists(f"{devcontainer_dir}/environment.yml"):
             conda_install = f"""
-COPY environment.yml /tmp/environment.yml
-WORKDIR /tmp
+COPY environment.yml .
 RUN curl --remote-name {C.MINICONDA_INSTALLER} \\
     && chmod +x Miniconda3-latest-Linux-x86_64.sh \\
     && ./Miniconda3-latest-Linux-x86_64.sh -b 
-ENV PATH="/home/{getpass.getuser()}/miniconda3/bin:$PATH"
+ENV PATH="/home/{ez.user_name}/miniconda3/bin:$PATH"
 RUN conda env create -f environment.yml
 """
         else:
@@ -411,6 +409,11 @@ FROM {ez_json["base_container_image"]}
 RUN apt update \\
     && apt upgrade -y \\
     && apt install -y curl build-essential git vim
+
+RUN useradd -r -u 1000 -m -d /home/{ez.user_name} {ez.user_name}
+USER {ez.user_name}
+WORKDIR /home/{ez.user_name}
+
 {pip_install}
 {conda_install}
     """
@@ -586,7 +589,8 @@ RUN apt update \\
         runargs = ""
 
     if compute_name == ".":
-        container_user = getpass.getuser()
+        # container_user = getpass.getuser()
+        container_user = ez.user_name
         ssh_dir = os.path.expanduser("~/.ssh")
     else:
         container_user = ez.user_name
@@ -596,15 +600,21 @@ RUN apt update \\
     ssh_mount = (f"\"source={ssh_dir},target={ssh_target},"
         f"type=bind,consistency=cached,readonly\",")
 
-    if mount_drive and ez.file_share_name is not None:
-        if compute_name == ".":
-            data_dir = os.path.expanduser("~/data")
-        else:
-            data_dir = f"/home/{ez.user_name}/data"
-        data_mount = (f"\"source={data_dir},target=/data,type=bind,"
-            f"consistency=cached\",")
-    else:
-        data_mount = ""
+    # Valid combinations
+    # Compute   local    azure         none
+    # Local     ~/data   mount ~/data   x
+    # Remote    ~/data   mount ~/data   x
+    # Special case is if ez.file_share_name is None maps to none
+
+    data_mount = ""
+    if ez.file_share_name is not None:
+        if mount == "local" or mount == "azure":
+            if compute_name == ".":
+                data_dir = os.path.expanduser("~/data")
+            else:
+                data_dir = f"/home/{ez.user_name}/data"
+            data_mount = (f"\"source={data_dir},target=/data,type=bind,"
+                f"consistency=cached\",")
 
     mounts = f"""
     "mounts": [
@@ -634,8 +644,8 @@ RUN apt update \\
     with open(devcontainer_json_path, "w", encoding="utf-8") as f:
         f.write(devcontainer_json)
 
-    # Mount /data drive
-    if mount_drive:
+    # Mount /data drive only if azure
+    if mount == "azure":
         if compute_name == ".":
             mount_path = os.path.expanduser("~/data")
         else:
@@ -664,15 +674,15 @@ RUN apt update \\
               help="Compute name to migrate the environment to")
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
+@click.option("--mount", default="None",
+              help="Mount {local|azure|none} drive to /data default none")
 @click.option("--use-acr", is_flag=True, default=False,
               help="Generate container using Azure Container Registry")
 @click.option("--build", is_flag=True, default=False,
               help="When used with --use-acr forces a build of the container")
-@click.option("--mount", is_flag=True, default=False,
-              help="Mount Azure File Storage into this environment")
 @click.pass_obj
-def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool, 
-    mount: bool):
+def go(ez: Ez, git_uri, compute_name, env_name, mount: str, use_acr: bool, 
+    build: bool):
     """Create and run an environment"""
 
     # If compute name is "-" OR there is no active compute defined, prompt
@@ -696,5 +706,8 @@ def go(ez: Ez, git_uri, compute_name, env_name, use_acr: bool, build: bool,
         env_name = git_uri.split("/")[-1]
         printf(f"using {env_name} (repo name) as the env name", indent=2)
 
-    __go(ez, git_uri, compute_name, env_name, use_acr, build, mount)
+    if mount == "azure" or mount == "local" or mount == "none":
+        __go(ez, git_uri, compute_name, env_name, use_acr, build, mount)
+    else:
+        printf_err("--mount must be azure|local|none")
     exit(0)
