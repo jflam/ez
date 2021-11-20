@@ -127,15 +127,8 @@ def init(ez: Ez):
     result = exec_cmd(cmd)
     exit_on_error(result)
 
-    # Select or create a new workspace TODO: today this only creates a new
-    # workspace, make it select in the future
-    print("\nStep 2/5: Create a new workspace\n")
-
-    # Ask for name
-    workspace_name = Prompt.ask("Workspace name", default="ezws")
-
     # Show existing resource groups scoped to selected subscription
-    print("\nStep 3/5: Select or create Azure resource group to use\n")
+    print("\nStep 2/5: Select or create Azure resource group to use\n")
 
     cmd = "az group list -o tsv"
     df = exec_cmd_return_dataframe(cmd)
@@ -221,8 +214,8 @@ def init(ez: Ez):
     else:
         workspace_resource_group = df.iloc[choice][3]
         workspace_region = df.iloc[choice][1]
-        print(f"Selected {workspace_resource_group}, "
-              f"region {workspace_region}")
+        printf(f"Selected {workspace_resource_group}, "
+            f"region {workspace_region}")
 
         # List Azure Container Registries in this resource group
         cmd = (f"az acr list --resource-group {workspace_resource_group} "
@@ -313,6 +306,13 @@ def init(ez: Ez):
         
         if file_share_name is not None:
             printf(f"Selected file share {file_share_name}")
+
+    # Create a new workspace 
+    print("\nStep 3/5: Create a new workspace\n")
+
+    # Ask for name which defaults to indicating region in workspace
+    workspace_name = Prompt.ask("Workspace name", 
+        default=f"ezws-{workspace_region}")
 
     # Ask for username 
     print("\nStep 4/5: Select user account name to use for compute resources")

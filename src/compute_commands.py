@@ -361,7 +361,8 @@ def ls(ez: Ez, all: bool):
         cmd = f"az vm list -d -o json"
     else:
         cmd = f"az vm list --resource-group {ez.resource_group} -d -o json"
-    result = exec_cmd(cmd, description=f"Querying Azure for a list of VMs")
+    result = exec_cmd(cmd, description=(f"Querying workspace "
+        f"{ez.workspace_name} for a list of VMs"))
     exit_on_error(result)
 
     all_vm_sizes = {}
