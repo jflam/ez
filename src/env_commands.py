@@ -398,7 +398,9 @@ RUN curl --remote-name {C.MINICONDA_INSTALLER} \\
     && chmod +x Miniconda3-latest-Linux-x86_64.sh \\
     && ./Miniconda3-latest-Linux-x86_64.sh -b 
 ENV PATH="/home/{ez.user_name}/miniconda3/bin:$PATH"
-RUN conda env create -f environment.yml
+
+RUN conda install -y mamba -n base -c conda-forge && \\
+    mamba env create -f environment.yml
 """
         else:
             conda_install = ""
