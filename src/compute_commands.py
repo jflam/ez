@@ -359,10 +359,12 @@ def ls(ez: Ez, all: bool):
     # Name, Size, vCPU, RAM, Disk Size, (GPU Config), On/Off
     if all:
         cmd = f"az vm list -d -o json"
+        description = "Querying all workspaces for a list of VMs"
     else:
         cmd = f"az vm list --resource-group {ez.resource_group} -d -o json"
-    result = exec_cmd(cmd, description=(f"Querying workspace "
-        f"{ez.workspace_name} for a list of VMs"))
+        description = (f"Querying workspace {ez.workspace_name} for a list "
+            "of VMs")
+    result = exec_cmd(cmd, description=description)
     exit_on_error(result)
 
     all_vm_sizes = {}
