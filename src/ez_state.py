@@ -186,24 +186,34 @@ class EzConfig:
         Returns:
             Ez: configuration object for selected workspace
         """
+        self.config["current_workspace"] = workspace_name
         return Ez(config_json=self.config["workspaces"][workspace_name])
 
     def add(self, ez: Ez, replace: bool=False) -> None:
         """Add a new Ez configuration to the global configuration object
 
-        ### Parameters
-        ez: Ez
-            - Ez an Ez object that contains a configuration to add
-        replace: bool (default False) 
-            - replace an existing configuration 
+        Adds ez to the EzConfig dictionary and also sets it as the current
+        workspace.
 
-        Raises
-        ------
-        - ValueError
-          - if the workspace_name of ez object already exists and replace
+        Args:
+            ez (Ez): an Ez object that contains a configuration to add
+            replace (bool): replace an existing configuration (default False) 
+
+        Raises:
+            ValueError: if the workspace_name of ez object already exists and replace
             is false
         """
         if ez.workspace_name in self.config["workspaces"]:
             raise ValueError(f"workspace {ez.workspace_name} already exists "
                 f"in configuration. Use replace=True to replace")
-        self.config["workspaces"][ez.workspace_name] = ez
+        self.config["current_workspace"] = ez.workspace_name
+        self.config["workspaces"][ez.workspace_name] = ez.get_dict()
+
+    def current(self) -> Ez:
+        """Selects the current workspace 
+
+        Returns:
+            Ez: configuration object for current workspace
+        """
+        current_workspace = self.config["current_workspace"]
+        return Ez(config_json=self.config["workspaces"][current_workspace])
