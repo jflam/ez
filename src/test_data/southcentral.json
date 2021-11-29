@@ -1,0 +1,15 @@
+{
+    "workspace_name": "ezws-southcentralus",
+    "resource_group": "ezws-southcentral-rg",
+    "registry_name": "jflamsouthcentralregistry",
+    "storage_account_name": "jflamsouthcentralstorage",
+    "file_share_name": "ezdata",
+    "subscription": "a2f3511c-c2c5-434b-89e9-8632a6a46d01",
+    "region": "southcentralus",
+    "private_key_path": "/Users/jlam/.ssh/id_rsa_azure",
+    "user_name": "ezuser",
+    "active_compute": "",
+    "active_compute_type": "",
+    "active_env": "",
+    "last_auth_check": "Fri Oct 29 17:48:18 2021"
+}
