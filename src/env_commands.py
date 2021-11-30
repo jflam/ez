@@ -1,4 +1,4 @@
-import click, getpass, glob, json, os, random, shutil, subprocess, uuid
+import click, glob, json, os, random, shutil, subprocess, uuid
 import constants as C
 
 from azutil import (build_container_image, get_vm_size, launch_vscode, 

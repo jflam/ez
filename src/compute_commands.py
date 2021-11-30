@@ -15,7 +15,6 @@ from fabric import Connection
 from formatting import printf, printf_err
 from os import path, system
 from rich import print
-from typing import Tuple
 
 @click.command()
 @click.option("--compute-name", "-c", required=True, 
