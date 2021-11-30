@@ -1,9 +1,6 @@
-import click
 import constants as C
-import json
 import os
 import pandas as pd
-import pathlib
 import platform
 import subprocess
 
@@ -11,14 +8,12 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from azutil import get_storage_account_key
-from exec import exec_cmd, exec_cmd_return_dataframe, exit_on_error
 from ez_state import Ez
-from formatting import printf_err, printf
+from formatting import printf_err
 from os import system
 from rich import print
 from rich.console import Console 
-from rich.prompt import IntPrompt, Prompt
+from rich.prompt import Prompt
 
 def check_installed(command: str, 
                     install_help: str = None,
