@@ -6,7 +6,7 @@ from azutil import (build_container_image, get_vm_size, launch_vscode,
     get_active_compute_name, get_compute_size, mount_storage_account,
     get_compute_uri)
 from exec import exec_cmd, exit_on_error
-from ez_state import Ez
+from ez_state import Ez, EzRuntime
 from formatting import printf, printf_err
 from os import getcwd, path
 
@@ -93,9 +93,10 @@ def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
 @click.option("--force-generate", is_flag=True, default=False,
               help="Force generation of the local VS Code project")
 @click.pass_obj
-def run(ez: Ez, env_name, git_uri, user_interface, compute_name, git_clone, 
-        force_generate):
+def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name, 
+    git_clone, force_generate):
     """DEPRECATED"""
+    ez = runtime.current()
     printf_err("deprecated: Use ez env go instead")
     exit(0)
 
@@ -137,7 +138,7 @@ def ls(ez: Ez):
 @click.argument("src")
 @click.argument("dest")
 @click.pass_obj
-def cp(ez: Ez, compute_name: str, src: str, dest: str):
+def cp(runtime: EzRuntime, compute_name: str, src: str, dest: str):
     """
 Copy local files to/from an environment.
 
@@ -152,6 +153,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
 ./*.txt :/remote/path    Copy local .txt files to active environment /remote/path
 :/remote/path/*.txt ./   Copy active environment /remote/path/*.txt files locally
     """
+    ez = runtime.current()
     if ez.active_remote_compute == ".":
         # TODO: this might not be the case though - let's get feedback on this
         printf_err("Not needed for locally running environments. You can "
@@ -200,8 +202,9 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
-def ssh(ez: Ez, compute_name, env_name):
+def ssh(runtime: EzRuntime, compute_name, env_name):
     """SSH to an environment"""
+    ez = runtime.current()
     if not ez.active_remote_compute:
         if not compute_name:
             printf_err("--compute-name parameter must be specified "
@@ -254,7 +257,7 @@ def ssh(ez: Ez, compute_name, env_name):
 
 @click.command()
 @click.pass_obj
-def stop(ez: Ez):
+def stop(runtime: EzRuntime):
     pass
 
 @click.command()
@@ -263,7 +266,7 @@ def stop(ez: Ez):
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
 @click.pass_obj
-def up(ez: Ez, compute_name, env_name):
+def up(runtime: EzRuntime, compute_name, env_name):
     """Migrate the current environment to a new compute node"""
 
     # Let's assume that we are in a local environment for the purpose
@@ -271,6 +274,7 @@ def up(ez: Ez, compute_name, env_name):
     # the case.
 
     # Get the URI of the repo we are currently in
+    ez = runtime.current()
     result = exec_cmd("git config --get remote.origin.url")
     exit_on_error(result)
     git_remote_uri = result.stdout
@@ -683,12 +687,13 @@ WORKDIR /home/{ez.user_name}
 @click.option("--build", is_flag=True, default=False,
               help="When used with --use-acr forces a build of the container")
 @click.pass_obj
-def go(ez: Ez, git_uri, compute_name, env_name, mount: str, use_acr: bool, 
-    build: bool):
+def go(runtime: EzRuntime, git_uri, compute_name, env_name, mount: str, 
+    use_acr: bool, build: bool):
     """Create and run an environment"""
 
     # If compute name is "-" OR there is no active compute defined, prompt
     # the user to select (or create) a compute
+    ez = runtime.current()
     if compute_name == "-":
         print("Select which VM to use from this list of VMs provisioned "
               f"in resource group {ez.resource_group}")

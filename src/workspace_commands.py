@@ -3,18 +3,23 @@
 import click, json, os, pathlib, subprocess
 import constants as C
 import pandas as pd
+import subprocess
 
-from ez_state import Ez
-from os import path, system
-from rich import print
+from ez_state import Ez, EzConfig, EzRuntime
 
 from azutil import get_storage_account_key
 from exec import exec_cmd, exec_cmd_return_dataframe, exit_on_error
-from ez_state import Ez
+from ez_state import Ez, EzConfig
 from formatting import printf_err, printf
-from os import system
 from rich import print
 from rich.prompt import IntPrompt, Prompt
+
+def get_subscription_name(subscription):
+    """Helper function to query Azure CLI for info about subscription"""
+    cmd = ["az", "account", "show", "-s", subscription, "-o", "tsv"]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)
+    fields = result.stdout.decode("utf-8").split("\t")
+    return fields[5]
 
 def create_workspace() -> Ez:
     """Create a new workspace
@@ -316,72 +321,43 @@ def create_workspace() -> Ez:
     return ez
 
 @click.command()
-@click.option("--workspace-name", "-n", default="ez-workspace", 
-              help="Name of workspace to create (default ezworkspace)")
-@click.option("--subscription", "-s", required=True, 
-              help="Azure subscription id")
-@click.option("--region", "-r", required=True, 
-              help="Region to create workspace in")
-@click.option("--private-key-path", "-k", required=True, 
-              help="Path to private key to use for this registration")
-@click.option("--user-name", "-u", default="ezuser", 
-              help="Username for all VMs (default is ezuser)")
 @click.pass_obj
-def create(ez: Ez, workspace_name, subscription, region, 
-           private_key_path, user_name):
-    """Create a workspace"""
+def create(runtime: EzRuntime):
+    """Create a workspace interactively"""
 
     ez = create_workspace()
-    # A workspace is defined by ~/.easy.conf file
-    if path.exists(path.expanduser(C.CONFIGURATION_FILENAME)):
-        print((
-               f"{C.CONFIGURATION_FILENAME} exists already. ez only "
-               f"supports a single registration at a time today."))
-        exit(1)
-
-    click.echo(f"CREATING a new workspace: {workspace_name}")
-    ez.workspace_name = workspace_name
-    ez.subscription = subscription
-    ez.region = region
-    ez.private_key_path = private_key_path
-    ez.user_name = user_name
-
-    print("Creating a new ez workspace:")
-    print("============================")
-    print(f"Name:              {workspace_name}")
-    print(f"Subscription:      {subscription}")
-    print(f"Region:            {region}")
-    print(f"Private Key Path:  {private_key_path}")
-    print(f"User name:         {user_name}\n\n")
-
-    print(f"Creating a new Azure Resource Group: {ez.resource_group}\n")
-    system((
-           f"az group create --location {region} --name {ez.resource_group} "
-           f"--output table"))
-    print("DONE!")
+    runtime.add(ez)
+    runtime.save()
 
 @click.command()
-def delete():
+@click.pass_obj
+def delete(runtime: EzRuntime):
     """Delete a workspace"""
     pass
 
 @click.command()
-def ls():
-    """List workspaces"""
-    pass
-
-import subprocess
-
-def get_subscription_name(subscription):
-    cmd = ["az", "account", "show", "-s", subscription, "-o", "tsv"]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE)
-    fields = result.stdout.decode("utf-8").split("\t")
-    return fields[5]
+@click.option("--name", "-n", required=True, 
+              help="Name of workspace to select")
+@click.pass_obj
+def select(runtime: EzRuntime, name: str):
+    """Select workspace"""
+    runtime.select(name)
+    printf(f"Selected workspace {name}")
+    runtime.save()
 
 @click.command()
 @click.pass_obj
-def info(ez: Ez):
+def ls(runtime: EzRuntime):
+    """List workspaces"""
+    pass
+
+@click.command()
+@click.pass_obj
+def info(runtime: EzRuntime):
     """Show information about the ez workspace"""
+
+    # TODO: clean this up
+    ez = runtime.current()
     subscription_name = get_subscription_name(ez.subscription)
     subscription_info = f"{subscription_name} ({ez.subscription})"
 

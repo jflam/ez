@@ -8,8 +8,8 @@
     "region": "eastus2",
     "private_key_path": "/Users/jlam/.ssh/id_rsa_azure",
     "user_name": "ezuser",
-    "active_compute": "",
-    "active_compute_type": "",
-    "active_env": "",
+    "active_remote_compute": "",
+    "active_remote_compute_type": "",
+    "active_remote_env": "",
     "last_auth_check": "Fri Oct 29 17:48:18 2021"
 }

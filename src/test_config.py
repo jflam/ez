@@ -1,40 +1,59 @@
 import json
 
-from ez_state import EzConfig, Ez
+from dataclasses import dataclass
+from ez_state import EzConfig, Ez, EzRuntime
 
-# Test configuration and multi-file configuration
+def test_ez():
+    """Test configuration of ez2 using dataclasses"""
+    ez = Ez()
+    ez.workspace_name = "bob"
+
+    config = ez.__dict__
+    assert config["workspace_name"] == "bob"
+
+def test_load_ez():
+    """Test serialization of ez2 using dataclasses"""
+    with open("./test_data/southcentral.json", "rt") as f:
+        config = json.load(f)
+
+    ez = Ez(**config)
+    assert ez.workspace_name == "ezws-eastus2"
+
+    j = ez.__dict__
+    assert j["workspace_name"] == "ezws-eastus2"
+
+def test_empty_config():
+    runtime = EzRuntime()
+    assert runtime is not None
 
 def test_config():
-    ez_config = EzConfig("./test_data/.ez.json")
-    assert ez_config is not None
-    config = ez_config.config    
-    assert config is not None
-    assert config["workspaces"] is not None
-    assert config["current_workspace"] is not None
-    keys = list(config["workspaces"].keys())
+    runtime = EzRuntime("./test_data/.ez.json")
+    assert runtime is not None
+    assert runtime.config.current_workspace is not None
+    keys = list(runtime.config.workspaces.keys())
     assert len(keys) == 2
     assert keys[0] == "ezws-westus2"
     assert keys[1] == "ezws-southcentralus"
-    assert config["current_workspace"] == "ezws-westus2"
-    assert config["workspaces"]["ezws-westus2"] is not None
-    assert config["workspaces"]["ezws-southcentralus"] is not None
-    ws1 = ez_config.select("ezws-westus2")
+    assert runtime.config.current_workspace == "ezws-westus2"
+    assert runtime.config.workspaces["ezws-westus2"] is not None
+    assert runtime.config.workspaces["ezws-southcentralus"] is not None
+    ws1 = runtime.select("ezws-westus2")
     assert ws1 is not None
     assert ws1.workspace_name == "ezws-westus2"
     assert ws1.resource_group == "ez-workspace-rg"
     assert ws1.region == "westus2"
-    ws2 = ez_config.select("ezws-southcentralus")
+    ws2 = runtime.select("ezws-southcentralus")
     assert ws2 is not None
     assert ws2.workspace_name == "ezws-southcentralus"
     assert ws2.resource_group == "ezws-southcentral-rg"
     assert ws2.region == "southcentralus"
 
 def test_switch_config():
-    ez_config = EzConfig("./test_data/.ez.json")
+    ez_config = EzRuntime("./test_data/.ez.json")
     with open("./test_data/southcentral.json", "rt") as f:
         new_config = json.load(f)
         
-    new_ez_workspace = Ez(config_json=new_config)
+    new_ez_workspace = Ez(**new_config)
     assert new_ez_workspace.workspace_name == "ezws-eastus2"
     assert new_ez_workspace.region == "eastus2"
     assert new_ez_workspace.file_share_name == "ezdata"

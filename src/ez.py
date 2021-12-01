@@ -1,7 +1,6 @@
 import click
 import constants as C
 import os
-import pandas as pd
 import platform
 import subprocess
 
@@ -9,7 +8,7 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from ez_state import Ez
+from ez_state import Ez, EzConfig, EzRuntime
 from formatting import printf_err
 from os import system
 from rich import print
@@ -33,7 +32,7 @@ def check_installed(command: str,
             print(f"TO INSTALL: {install_help}")
         return False
 
-def check_dependencies(ez: Ez, force: bool=False) -> bool:
+def check_dependencies(force: bool=False) -> bool:
     """Install dependencies required for ez to run"""
     # NOTE: these are Windows instructions
     if platform.system() == "Linux":
@@ -79,12 +78,20 @@ def check_dependencies(ez: Ez, force: bool=False) -> bool:
 def ez(ctx, debug, insiders, dependencies, disable_jit):
     """Command-line interface for creating and using portable Python
     environments. To get started run ez init!"""
-    ctx.obj = Ez(debug=debug, insiders=insiders, disable_jit=disable_jit)
-    if not check_dependencies(ctx.obj, dependencies):
+
+    runtime = EzRuntime()
+    runtime.debug = debug
+    runtime.insiders = insiders 
+    runtime.disable_jit = disable_jit
+
+    ctx.obj = runtime
+
+    if not check_dependencies(dependencies):
         exit(1)
 
 @click.command()
-def init() -> None:
+@click.pass_obj
+def init(runtime: EzRuntime) -> None:
     """First (and one-time) initialization of ez
 
     One-time initialization of ez. If it finds an existing ~/.ez.json file
@@ -92,7 +99,6 @@ def init() -> None:
     """
 
     ez = workspace_commands.create_workspace()
-    print(ez.get_dict())
     ez_config_path = os.path.expanduser(C.WORKSPACE_CONFIG)
     if os.path.isfile(ez_config_path):
         choice = Prompt.ask(f"{ez_config_path} exists. Overwrite?", 
@@ -101,7 +107,8 @@ def init() -> None:
             os.remove(ez_config_path)
         else:
             exit(0)
-    ez.save()
+    runtime.add(ez)
+    runtime.save()
 
     print(f"""
 ez is now configured, configuration file written to {ez_config_path}.
@@ -147,6 +154,7 @@ def workspace():
 
 workspace.add_command(workspace_commands.create)
 workspace.add_command(workspace_commands.delete)
+workspace.add_command(workspace_commands.select)
 workspace.add_command(workspace_commands.ls)
 workspace.add_command(workspace_commands.info)
 
