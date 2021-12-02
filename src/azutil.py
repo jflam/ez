@@ -11,7 +11,7 @@ import urllib.parse
 from exec import (exec_cmd_return_dataframe, exec_cmd, exec_file, 
     exit_on_error)
 from getpass import getuser
-from ez_state import Ez
+from ez_state import Ez, EzRuntime
 from formatting import format_output_string, printf, printf_err
 from os import path, system, makedirs, path, system
 from rich import print
@@ -21,10 +21,11 @@ from time import sleep
 
 # Execute commands, either locally or remotely
 
-def login(ez: Ez):
+def login(runtime: EzRuntime):
     """Login to Azure and GitHub using existing credentials"""
 
     # Daily check
+    ez = runtime.current()
     delta = datetime.datetime.now() - ez.last_auth_check
     if delta.days < 2:
         ez.logged_in = True
@@ -48,8 +49,9 @@ def login(ez: Ez):
                     "Please login manually using: gh auth login")
                 exit(1)
 
-def copy_to_clipboard(ez: Ez, text: str):
+def copy_to_clipboard(runtime: EzRuntime, text: str):
     """Platform independent copy text to clipboard function"""
+    ez = runtime.current()
     if platform.system() == "Linux":
         if platform.release().find("WSL") != -1:
             clip = "clip.exe"
@@ -110,9 +112,10 @@ def is_gpu(vm_size):
     result = vm_size in azure_gpu_sizes
     return result
 
-def get_active_compute_name(ez: Ez, compute_name) -> str:
+def get_active_compute_name(runtime: EzRuntime, compute_name) -> str:
     """Get the active compute name or exit. Passing None for compute_name
     returns the active remote compute, if it is set."""
+    ez = runtime.current()
     if compute_name == None:
         if ez.active_remote_compute == "":
             printf_err("No active remote compute: specify --compute-name")
@@ -122,9 +125,10 @@ def get_active_compute_name(ez: Ez, compute_name) -> str:
     else:
         return compute_name
 
-def get_compute_size(ez: Ez, compute_name) -> str:
+def get_compute_size(runtime: EzRuntime, compute_name) -> str:
     """Return the compute size of compute_name"""
     # Special return value for localhost
+    ez = runtime.current()
     if compute_name == '.':
         return '.'
 
@@ -133,7 +137,7 @@ def get_compute_size(ez: Ez, compute_name) -> str:
         # For now, it always returns a GPU-enabled SKU
         return "Standard_NC6_Promo"
     elif ez.active_remote_compute_type == "vm":
-        ez.debug_print(format_output_string(
+        runtime.debug_print(format_output_string(
             f"get compute size for {compute_name}"))
         get_compute_size_cmd = (
             f"az vm show --name {compute_name} "
@@ -143,14 +147,15 @@ def get_compute_size(ez: Ez, compute_name) -> str:
         result = exec_cmd(get_compute_size_cmd)
         exit_on_error(result)
         compute_size = result.stdout
-        ez.debug_print(format_output_string(f"result: {compute_size}"))
+        runtime.debug_print(format_output_string(f"result: {compute_size}"))
         return compute_size
     else:
         printf_err("Unknown active_remote_compute_type in ~/.ez.conf "
                    f"detected: {ez.active_remote_compute_type}")
         exit(1)
 
-def is_vm_running(ez: Ez, vm_name) -> bool:
+def is_vm_running(runtime: EzRuntime, vm_name) -> bool:
+    ez = runtime.current()
     is_running = (
         f"az vm list -d -o table --query "
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
@@ -159,7 +164,7 @@ def is_vm_running(ez: Ez, vm_name) -> bool:
     result = exec_cmd(is_running)
     return True if result.exit_code == 0 else False
 
-def jit_activate_vm(ez: Ez, vm_name) -> None:
+def jit_activate_vm(runtime: EzRuntime, vm_name) -> None:
     """JIT activate vm_name for 3 hours"""
     # TODO: this is broken right now, they changed the resource ID
     # PolicyNotFound error coming back from the machine
@@ -167,13 +172,14 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
     # be helpful (though it seems to old to be helpful in this case)
     # https://github.com/Azure/azure-cli/issues/9855
     return
+    ez = runtime.current()
     if ez.disable_jit:
         return
 
     resource_group = f"{ez.workspace_name}-rg"
 
     print(f"CHECKING if virtual machine {vm_name} is running...")
-    if not is_vm_running(ez, vm_name):
+    if not is_vm_running(runtime, vm_name):
         print(f"STARTING virtual machine {vm_name}...")
         start_vm_cmd = (
             f"az vm start --name {vm_name} "
@@ -192,14 +198,14 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
 
     # Get local machine IP address for JIT activation
 
-    ez.debug_print(f"GETTING local IP address...")
+    runtime.debug_print(f"GETTING local IP address...")
     get_my_ip_cmd = "curl -k -s https://ifconfig.me/ip"
     result = exec_cmd(get_my_ip_cmd)
     exit_on_error(result)
     local_ip_address = result.stdout
-    ez.debug_print(f"RESULT: local IP address {local_ip_address}")
+    runtime.debug_print(f"RESULT: local IP address {local_ip_address}")
 
-    ez.debug_print(f"GETTING virtual machine id for {vm_name}...")
+    runtime.debug_print(f"GETTING virtual machine id for {vm_name}...")
     vm_show_cmd = (
         f"az vm show -n {vm_name} -g {resource_group} "
         f"-o tsv --query \"[id, location]\""
@@ -207,7 +213,7 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
     result = exec_cmd(vm_show_cmd)
     exit_on_error(result)
     vm_id, vm_location = result.stdout.splitlines()
-    ez.debug_print(f"RESULT: virtual machine id {vm_id}")
+    runtime.debug_print(f"RESULT: virtual machine id {vm_id}")
 
     subscription = ez.subscription
 
@@ -239,15 +245,15 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
     }
     body_json = shlex.quote(json.dumps(body))
     jit_command=f"az rest --method post --uri {endpoint} --body {body_json}"
-    ez.debug_print(f"JIT ACTIVATE command: {jit_command}")
+    runtime.debug_print(f"JIT ACTIVATE command: {jit_command}")
 
     # Make the REST API call using the az rest cli command
 
-    ez.debug_print(f"REQUESTING JIT activation for {vm_name}...")
+    runtime.debug_print(f"REQUESTING JIT activation for {vm_name}...")
     result = exec_cmd(jit_command)
     exit_on_error(result)
     output = result.stdout
-    ez.debug_print(f"RESULT {output}")
+    runtime.debug_print(f"RESULT {output}")
 
     # HACKHACK sleep for 3 seconds to allow enough time for JIT activate
     # to complete. Need to figure out how to wait on actual completion of
@@ -257,9 +263,10 @@ def jit_activate_vm(ez: Ez, vm_name) -> None:
 
     ez.jit_activated = True
 
-def get_vm_size(ez: Ez, vm_name) -> str:
+def get_vm_size(runtime: EzRuntime, vm_name) -> str:
     """Return the VM size of vm_name"""
-    vm_name = get_active_compute_name(ez, vm_name)
+    ez = runtime.current()
+    vm_name = get_active_compute_name(runtime, vm_name)
     info_cmd = (
         f"az vm get-instance-view --name {vm_name} "
         f"--resource-group {ez.resource_group} "
@@ -272,9 +279,10 @@ def get_vm_size(ez: Ez, vm_name) -> str:
     else:
         return result.stderr
 
-def generate_devcontainer_json(ez: Ez, jupyter_port_number, token, 
+def generate_devcontainer_json(runtime: EzRuntime, jupyter_port_number, token, 
                                local=False, has_gpu=False):
     """Generate an appropriate devcontainer.json file"""
+    ez = runtime.current()
     if local:
         mount_config = (
             f'"mounts": ["source=/var/run/docker.sock,'
@@ -332,8 +340,10 @@ def generate_devcontainer_json(ez: Ez, jupyter_port_number, token,
     )
     return devcontainer_json
 
-def generate_settings_json(ez: Ez, is_local, jupyter_port_number, token):
+def generate_settings_json(runtime: EzRuntime, is_local, jupyter_port_number, 
+    token):
     """Generate an appropriate settings.json file"""
+    ez = runtime.current()
     if not is_local:
         settings_json = (
             f'{{\n'
@@ -354,7 +364,8 @@ def generate_settings_json(ez: Ez, is_local, jupyter_port_number, token):
 
     return settings_json
 
-def generate_remote_settings_json(ez: Ez, jupyter_port_number, token):
+def generate_remote_settings_json(runtime: EzRuntime, jupyter_port_number, 
+    token):
     """Generate remote_settings.json file"""
     remote_settings_json = (
         f'{{\n'
@@ -364,10 +375,12 @@ def generate_remote_settings_json(ez: Ez, jupyter_port_number, token):
     )
     return remote_settings_json
 
-def build_container_image(ez: Ez, env_name, git_uri, jupyter_port, vm_name,
-                          user_interface="code", force_git_clone=False, 
-                          patch_file=None):
+# TODO: remove this method
+def build_container_image(runtime: EzRuntime, env_name, git_uri, jupyter_port, 
+    vm_name, user_interface="code", force_git_clone=False, patch_file=None):
     """Build a container image either locally or remote"""
+
+    ez = runtime.current()
     git_clone_flag = "--git-clone" if force_git_clone else ""
     is_local = True if vm_name == "." else False
 
@@ -395,32 +408,32 @@ def build_container_image(ez: Ez, env_name, git_uri, jupyter_port, vm_name,
     else:
         build_cmd = f"{build_script_path} {build_params}"
 
-    ez.debug_print(f"BUILD command: {build_cmd}")
+    runtime.debug_print(f"BUILD command: {build_cmd}")
     if is_local:
         print(f"BUILDING {env_name} on localhost ...")
     else:
         print(f"BUILDING {env_name} on {vm_name}...")
 
     if not is_local:
-        ez.debug_print(f"EXECUTING build script on {vm_name}...")
+        runtime.debug_print(f"EXECUTING build script on {vm_name}...")
         result = exec_file(build_script_path, 
-            uri=get_compute_uri(ez, vm_name), 
+            uri=get_compute_uri(runtime, vm_name), 
             private_key_path=ez.private_key_path, 
             description=f"Executing build script on {vm_name}")
         exit_on_error(result)
     else:
-        ez.debug_print(f"EXECUTING build script locally...")
+        runtime.debug_print(f"EXECUTING build script locally...")
         result = exec_cmd(build_cmd)
         exit_on_error(result)
 
-    ez.debug_print(f"DONE")
+    runtime.debug_print(f"DONE")
 
 # TODO: remove this method
-def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token, 
-                            vm_name, has_gpu, force_generate=False, 
-                            is_k8s = False) -> str:
+def generate_vscode_project(runtime: EzRuntime, dir, git_uri, jupyter_port, 
+    token, vm_name, has_gpu, force_generate=False, is_k8s = False) -> str:
     """Generate a surrogate VS Code project at dir. Returns path to the 
     generated VS Code project."""
+    ez = runtime.current()
     is_local = True if vm_name == "." else False
 
     repo_name = path.basename(git_uri)
@@ -431,7 +444,7 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
 
     path_to_vsc_project = f"{dir}/{local_dirname}"
     if path.exists(path_to_vsc_project) and force_generate:
-        ez.debug_print(f"REMOVING existing directory: {path_to_vsc_project}")
+        runtime.debug_print(f"REMOVING existing directory: {path_to_vsc_project}")
         rmtree(path_to_vsc_project)
 
     print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
@@ -466,7 +479,8 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
             file.write(devcontainer_json)
 
     settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
-    settings_json = generate_settings_json(ez, is_local, jupyter_port, token)
+    settings_json = generate_settings_json(runtime, is_local, jupyter_port, 
+        token)
 
     print(f"GENERATE settings.json: {settings_json_path}")
     with open(settings_json_path, "w") as file:
@@ -475,7 +489,7 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
     if not is_local:
         remote_settings_json_path = (
             f"{path_to_vsc_project}/.vscode/remote_settings.json")
-        remote_settings_json = generate_remote_settings_json(ez, 
+        remote_settings_json = generate_remote_settings_json(runtime, 
                                                              jupyter_port, 
                                                              token)
 
@@ -495,13 +509,13 @@ def generate_vscode_project(ez: Ez, dir, git_uri, jupyter_port, token,
         # This doesn't matter because this method will be deprecated too
         # result = exec_file(remote_settings_json_path, 
         #     get_compute_uri(vm_name), private_key_path=)
-        # exec_script_using_ssh(ez, remote_settings_json_path, 
+        # exec_script_using_ssh(runtime, remote_settings_json_path, 
         #                       vm_name, 
         #                       write_settings_json_cmd)
     
     return path_to_vsc_project
 
-def launch_vscode(ez: Ez, dir):
+def launch_vscode(runtime: EzRuntime, dir):
     """Launch either VS Code or VS Code Insiders on dir"""
 
     # This is launched in Windows, not WSL 2, so I need to get the path to the
@@ -511,9 +525,10 @@ def launch_vscode(ez: Ez, dir):
     # dir_path = path.expanduser(dir).replace('/', '\\')
     # wsl_distro_name = environ["WSL_DISTRO_NAME"]    
     # wsl_path = f"\\\\wsl$\\{wsl_distro_name}{dir_path}"
-    # ez.debug_print(f"PATH: {wsl_path}")
+    # runtime.debug_print(f"PATH: {wsl_path}")
 
-    vscode_cmd = "code-insiders" if ez.insiders else "code"
+    ez = runtime.current()
+    vscode_cmd = "code-insiders" if runtime.insiders else "code"
     # TODO: figure out a way to determine when Jupyter is started in the pod
     # because VS Code doesn't do a good job at retrying connection
     # TODO: this isn't working on remote containers right now
@@ -526,7 +541,7 @@ def launch_vscode(ez: Ez, dir):
     # NOTE that this is opening from the WSL2 side not the Windows side
     # which is what the commented out code above tries (but fails) to do
     cmdline = f"{vscode_cmd} {path.expanduser(dir)}"
-    ez.debug_print(f"ENCODED path: {cmdline}")
+    runtime.debug_print(f"ENCODED path: {cmdline}")
     system(cmdline)
 
 def install_local_dependencies():
@@ -538,8 +553,9 @@ def install_local_dependencies():
     # install docker
     # install ruamel.yaml (via conda!)
 
-def enable_jit_access_on_vm(ez: Ez, vm_name: str):
+def enable_jit_access_on_vm(runtime: EzRuntime, vm_name: str):
     return
+    ez = runtime.current()
     if ez.disable_jit:
         return 
 
@@ -550,7 +566,7 @@ def enable_jit_access_on_vm(ez: Ez, vm_name: str):
     result = exec_cmd(vm_show_cmd)
     exit_on_error(result)
     vm_id, vm_location = result.stdout.splitlines()
-    ez.debug_print(f"RESULT: virtual machine id {vm_id}")
+    runtime.debug_print(f"RESULT: virtual machine id {vm_id}")
 
     # Generate the URI of the JIT activate endpoint REST API
 
@@ -599,12 +615,12 @@ def enable_jit_access_on_vm(ez: Ez, vm_name: str):
     }
     body_json = shlex.quote(json.dumps(body))
     jit_command=f"az rest --method post --uri {endpoint} --body {body_json}"
-    ez.debug_print(f"JIT ENABLE command: {jit_command}")
+    runtime.debug_print(f"JIT ENABLE command: {jit_command}")
     print(f"ENABLING JIT activation for {vm_name}...")
     result = exec_cmd(jit_command)
     exit_on_error(result)
     output = result.stdout
-    ez.debug_print(f"RESULT {output}")
+    runtime.debug_print(f"RESULT {output}")
 
 def pick_vm(resource_group, show_gpu_only=False):
     """Display a list of VMs from the resource group"""
@@ -655,13 +671,14 @@ def get_storage_account_key(storage_account_name: str,
         printf_err(result.stderr)
         exit(1)
 
-def mount_storage_account(ez: Ez, 
+def mount_storage_account(runtime: EzRuntime, 
     compute_name: str, 
     mount_path: str, 
     persistent_mount: bool=False) -> int:
     """Generate SMB path name for Azure File Share"""
 
     # Retrieve the storage account key and urlencode it
+    ez = runtime.current()
     key = get_storage_account_key(ez.storage_account_name, ez.resource_group)
     quoted_key = urllib.parse.quote_plus(key)
 
@@ -671,7 +688,7 @@ def mount_storage_account(ez: Ez,
         result = exec_cmd(cmd, 
         description="Creating local data mount directory")
     else:
-        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+        result = exec_cmd(cmd, get_compute_uri(runtime, compute_name), 
             ez.private_key_path,
             description="Creating remote data mount directory")
     exit_on_error(result)
@@ -705,16 +722,18 @@ def mount_storage_account(ez: Ez,
             f"file.core.windows.net/{ez.file_share_name} {mount_path} "
             f"-o username={ez.storage_account_name},password={key},serverino,"
             f"uid={ez.user_name},file_mode=0777,dir_mode=0777")
-        result = exec_cmd(cmd, get_compute_uri(ez, compute_name), 
+        result = exec_cmd(cmd, get_compute_uri(runtime, compute_name), 
             ez.private_key_path,
             description="Mounting remote Azure File Share")
     # exit_on_error(result)
     return result.exit_code
 
-def get_compute_uri(ez: Ez, compute_name: str) -> str:
+def get_compute_uri(runtime: EzRuntime, compute_name: str) -> str:
+    ez = runtime.current()
     return f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com"
 
-def get_host_ecdsa_key(ez: Ez, compute_name: str) -> str:
+def get_host_ecdsa_key(runtime: EzRuntime, compute_name: str) -> str:
+    ez = runtime.current()
     cmd = (f"az vm run-command invoke -g {ez.resource_group} "
         f"-n {compute_name} --command-id RunShellScript "
         f"--scripts 'cat /etc/ssh/ssh_host_ecdsa_key.pub' --output json")

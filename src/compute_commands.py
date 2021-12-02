@@ -98,21 +98,21 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type, image,
         # Unfortunately, this is a very slow code path for some reason and
         # it takes ~30s to retrieve the host's ECDSA key.
 
-        host_key = get_host_ecdsa_key(ez, compute_name)
+        host_key = get_host_ecdsa_key(runtime, compute_name)
         hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
         
         with open(os.path.expanduser("~/.ssh/known_hosts"), "a") as f:
             f.write(f"{hostname} {host_key}")
 
         # TODO: analyze output for correct flags
-        enable_jit_access_on_vm(ez, compute_name)
+        enable_jit_access_on_vm(runtime, compute_name)
 
-        __update_system(ez, compute_name, compute_size)
-        __enable_acr(ez, compute_name)
-        __enable_github(ez, compute_name)
+        __update_system(runtime, compute_name, compute_size)
+        __enable_acr(runtime, compute_name)
+        __enable_github(runtime, compute_name)
 
         # Ask machine to reboot (need to swallow exception here)
-        uri = get_compute_uri(ez, compute_name)
+        uri = get_compute_uri(runtime, compute_name)
         exec_cmd("sudo reboot", uri=uri, 
             private_key_path=ez.private_key_path, 
             description=f"Rebooting {compute_name}")
@@ -137,7 +137,7 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type, image,
 def update_system(runtime: EzRuntime, compute_name, compute_size):
     """Update the system software on compute_name"""
     ez = runtime.current()
-    result = __update_system(ez, compute_name, compute_size)
+    result = __update_system(runtime, compute_name, compute_size)
     exit_on_error(result)
 
     # Update current remote compute state
@@ -145,10 +145,11 @@ def update_system(runtime: EzRuntime, compute_name, compute_size):
     ez.active_remote_compute_type = "vm"
     exit(0)
 
-def __update_system(ez: Ez, compute_name: str, 
+def __update_system(runtime: EzRuntime, compute_name: str, 
     compute_size: str) -> ExecResult:
     """Update the system software on compute_name and using compute_size to
     determine if we need to install CPU or GPU system software"""
+    ez = runtime.current()
     provision_vm_script = "provision-cpu"
     if is_gpu(compute_size):
         provision_vm_script = "provision-gpu"
@@ -159,16 +160,17 @@ def __update_system(ez: Ez, compute_name: str,
         f"{provision_vm_script}"
     )
 
-    uri = get_compute_uri(ez, compute_name)
+    uri = get_compute_uri(runtime, compute_name)
     result = exec_file(provision_vm_script_path, uri=uri, 
         private_key_path=ez.private_key_path, description=description)
     return result
 
-def __enable_acr(ez: Ez, compute_name: str) -> ExecResult:
+def __enable_acr(runtime: EzRuntime, compute_name: str) -> ExecResult:
     """Internal function to enable ACR on compute_name"""
     # Repository name maps to workspace name
     # Environment name maps to tag
     # e.g., jflamregistry.azurecr.io/ezws:pytorch_tutorials
+    ez = runtime.current()
     repository_name = ez.workspace_name
 
     # az acr token create will recreate token if exists already
@@ -194,7 +196,7 @@ def __enable_acr(ez: Ez, compute_name: str) -> ExecResult:
               f"{ez.registry_name}.azurecr.io\" >> ~/.bashrc")
 
     # Append the docker login command to the ~/.bashrc on compute_name
-    uri = get_compute_uri(ez, compute_name)
+    uri = get_compute_uri(runtime, compute_name)
     result = exec_cmd(bashrc, uri=uri, private_key_path=ez.private_key_path,
         description=f"Updating ~/.bashrc on {compute_name}")
     exit_on_error(result)
@@ -207,20 +209,21 @@ def __enable_acr(ez: Ez, compute_name: str) -> ExecResult:
 def enable_acr(runtime: EzRuntime, compute_name: str):
     """Enable ACR on compute_name"""
     ez = runtime.current()
-    __enable_acr(ez, compute_name)
+    __enable_acr(runtime, compute_name)
     exit(0)
 
-def __enable_github(ez: Ez, 
+def __enable_github(runtime: EzRuntime, 
     compute_name: str, 
     manual: bool=False):
     """Internal function to enable github on compute_name"""
     # Generate a new public/private key pair on compute_name
     # TODO: fix the terrible echo hack
+    ez = runtime.current()
     comment = f"ez generated token for {compute_name}" 
     cmd = (f"echo -e 'y\n' | ssh-keygen -t ed25519 -C \"{comment}\" "
            f"-N '' -f /home/{ez.user_name}/.ssh/id_rsa_github "
            f"> /dev/null 2>&1")
-    uri = get_compute_uri(ez, compute_name)
+    uri = get_compute_uri(runtime, compute_name)
     result = exec_cmd(cmd, uri=uri, private_key_path=ez.private_key_path,
         description=f"Generating public/private key pair on {compute_name}")
     exit_on_error(result)
@@ -287,13 +290,13 @@ Host github.com
 
     # Append github.com to the list of known hosts on the server
     result = exec_cmd("ssh-keyscan -H github.com >> ~/.ssh/known_hosts",
-        uri = get_compute_uri(ez, compute_name), 
+        uri = get_compute_uri(runtime, compute_name), 
         private_key_path=ez.private_key_path)
     exit_on_error(result)
 
     if manual:
         # Put it on the clipboard 
-        copy_to_clipboard(ez, public_key)
+        copy_to_clipboard(runtime, public_key)
 
         # Open https://github.com/settings/ssh/new
         printf("Copied public key to clipboard")
@@ -325,7 +328,7 @@ Host github.com
 def enable_github(runtime: EzRuntime, compute_name: str, manual: bool):
     """Enable github on compute_name"""
     ez = runtime.current()
-    __enable_github(ez, compute_name, manual)
+    __enable_github(runtime, compute_name, manual)
     exit(0)
 
 @click.command()
@@ -334,7 +337,7 @@ def enable_github(runtime: EzRuntime, compute_name: str, manual: bool):
 def delete(runtime: EzRuntime, compute_name):
     """Delete a compute node"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
     description = f"deleting compute node {compute_name}"
     result = exec_cmd((f"az vm delete --yes --name {compute_name} "
         f"--resource-group {ez.resource_group}"), description=description)
@@ -434,8 +437,8 @@ def start(runtime: EzRuntime, compute_name):
         printf("Nothing done, local compute is already started")
         exit(0)
 
-    compute_name = get_active_compute_name(ez, compute_name)
-    jit_activate_vm(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
+    jit_activate_vm(runtime, compute_name)
     result = exec_cmd(f"az vm start --name {compute_name} "
         f"--resource-group {ez.resource_group}",
         description=f"starting compute node {compute_name}")
@@ -449,7 +452,7 @@ def start(runtime: EzRuntime, compute_name):
 def stop(runtime: EzRuntime, compute_name):
     """Stop a virtual machine"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
     # TODO: get compute_type too and fail for now on this
     result = exec_cmd(f"az vm deallocate --name {compute_name} "
         f"--resource-group {ez.resource_group}",
@@ -464,11 +467,11 @@ def stop(runtime: EzRuntime, compute_name):
 def ssh(runtime: EzRuntime, compute_name):
     """SSH to a virtual machine"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
     # TODO: get compute_type too and fail for now on this
-    jit_activate_vm(ez, compute_name)
+    jit_activate_vm(runtime, compute_name)
     ez.active_remote_compute = compute_name
-    ssh_remote_host = get_compute_uri(ez, compute_name)
+    ssh_remote_host = get_compute_uri(runtime, compute_name)
     cmd = (
         f"ssh -i {ez.private_key_path} "
         f" -o StrictHostKeyChecking=no "
@@ -488,7 +491,7 @@ def ssh(runtime: EzRuntime, compute_name):
 def select(runtime: EzRuntime, compute_name, compute_type):
     """Select a compute node"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
 
     # TODO: implement menu
     if compute_type == "vm":
@@ -509,8 +512,8 @@ def select(runtime: EzRuntime, compute_name, compute_type):
 def info(runtime: EzRuntime, compute_name):
     """Get info about compute hardware"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(ez, compute_name)
-    compute_size = get_vm_size(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
+    compute_size = get_vm_size(runtime, compute_name)
     # TODO: do this with AKS and the correct compute pool
 
     # Now use the vm_size to get hardware details 
@@ -540,7 +543,7 @@ def mount(runtime: EzRuntime, compute_name: str):
     # mount_path = f"/home/{ez.user_name}/src/{env_name}/data"
     mount_path = f"/home/{ez.user_name}/data"
 
-    exit(mount_storage_account(ez, compute_name, mount_path))
+    exit(mount_storage_account(runtime, compute_name, mount_path))
 
 @click.command()
 @click.option("--compute-name", "-c", help="Name of host to get key from")
@@ -548,5 +551,5 @@ def mount(runtime: EzRuntime, compute_name: str):
 def get_host_key(runtime: EzRuntime, compute_name):
     """Retrieve the ECDSA host key of compute_name"""
     ez = runtime.current()
-    key = get_host_ecdsa_key(ez, compute_name)
+    key = get_host_ecdsa_key(runtime, compute_name)
     print(key)

@@ -10,23 +10,25 @@ from ez_state import Ez, EzRuntime
 from formatting import printf, printf_err
 from os import getcwd, path
 
-def launch_user_interface(ez: Ez, user_interface, path_to_vscode_project, 
-                          jupyter_port, token):
+def launch_user_interface(runtime: EzRuntime, user_interface, 
+    path_to_vscode_project, jupyter_port, token):
     """Bind user_interface to the running instance"""
+    ez = runtime.current()
     if user_interface == "code":
         printf(f"launch VS Code {path_to_vscode_project}")
-        launch_vscode(ez, path_to_vscode_project)
+        launch_vscode(runtime, path_to_vscode_project)
     elif user_interface == "notebook" or user_interface == "lab":
         printf(f"launch Classic Jupyter "
               f"http://localhost:{jupyter_port}?token={token}")
 
-def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
+def run_k8s(runtime: EzRuntime, env_name, git_uri, jupyter_port, compute_name,
             user_interface, git_clone, token, has_gpu, force_generate):
     """DEPRECATED"""
+    ez = runtime.current()
     printf_err("k8s support needs reimplementation")
     exit(1)
 
-    # path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
+    # path_to_vscode_project = generate_vscode_project(runtime, getcwd(), git_uri, 
     #                                                  jupyter_port, token, 
     #                                                  ".", has_gpu, 
     #                                                  force_generate, True)
@@ -43,7 +45,7 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
     #     result = exec_cmd(docker_cmd)
     #     exit_on_error(result)
 
-    # launch_user_interface(ez, user_interface, path_to_vscode_project, 
+    # launch_user_interface(runtime, user_interface, path_to_vscode_project, 
     #                       jupyter_port, token)
 
     # jupyter_variant = "notebook"
@@ -64,17 +66,18 @@ def run_k8s(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
     # result = exec_cmd(kdo_cmd)
     # exit_on_error(result)
 
-def run_vm(ez: Ez, env_name, git_uri, jupyter_port, compute_name,
+def run_vm(runtime: EzRuntime, env_name, git_uri, jupyter_port, compute_name,
            user_interface, git_clone, token, has_gpu, force_generate):
     """DEPRECATED"""
-    build_container_image(ez, env_name, git_uri, jupyter_port, compute_name,
-                          user_interface, git_clone)
-    path_to_vscode_project = generate_vscode_project(ez, getcwd(), git_uri, 
+    ez = runtime.current()
+    build_container_image(runtime, env_name, git_uri, jupyter_port, 
+        compute_name, user_interface, git_clone)
+    path_to_vscode_project = generate_vscode_project(runtime, getcwd(), git_uri, 
                                                      jupyter_port, token, 
                                                      compute_name, has_gpu, 
                                                      force_generate)
 
-    launch_user_interface(ez, user_interface, path_to_vscode_project, 
+    launch_user_interface(runtime, user_interface, path_to_vscode_project, 
                           jupyter_port, token)
 
 @click.command()
@@ -100,7 +103,7 @@ def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name,
     printf_err("deprecated: Use ez env go instead")
     exit(0)
 
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
 
     # Initialize context
     ez.active_remote_compute = compute_name
@@ -110,14 +113,14 @@ def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name,
     jupyter_port = random.randint(1024, 8192)
     token = uuid.uuid4().hex 
 
-    compute_size = get_compute_size(ez, compute_name)
+    compute_size = get_compute_size(runtime, compute_name)
     has_gpu = is_gpu(compute_size)
 
     if ez.active_remote_compute_type == 'vm':
-        run_vm(ez, env_name, git_uri, jupyter_port, compute_name,
+        run_vm(runtime, env_name, git_uri, jupyter_port, compute_name,
                user_interface, git_clone, token, has_gpu, force_generate)
     elif ez.active_remote_compute_type == 'k8s':
-        run_k8s(ez, env_name, git_uri, jupyter_port, compute_name,
+        run_k8s(runtime, env_name, git_uri, jupyter_port, compute_name,
                 user_interface, git_clone, token, has_gpu, force_generate)
     else:
         print(f"Unknown active_remote_compute_type in ~/.ez.conf: "
@@ -127,7 +130,7 @@ def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name,
 
 @click.command()
 @click.pass_obj
-def ls(ez: Ez):
+def ls(runtime: EzRuntime):
     """List running environments"""
     pass
 
@@ -173,7 +176,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
         printf_err("Missing dest parameter")
         exit(1)
 
-    compute_name = get_active_compute_name(ez, compute_name)
+    compute_name = get_active_compute_name(runtime, compute_name)
     
     if src.startswith(":") and dest.startswith(":"):
         printf_err("Both src and dest cannot start with ':' "
@@ -286,7 +289,7 @@ def up(runtime: EzRuntime, compute_name, env_name):
     printf(f"Migrating {git_remote_uri} to {compute_name}")
 
     # Start the remote VM
-    jit_activate_vm(ez, compute_name)
+    jit_activate_vm(runtime, compute_name)
     ez.active_remote_compute = compute_name
 
     # Check to see if there are uncommitted changes
@@ -311,12 +314,12 @@ def up(runtime: EzRuntime, compute_name, env_name):
         patch_file = "changes.patch"
 
     env_name = git_remote_uri.split("/")[-1]
-    __go(ez, git_remote_uri, compute_name, env_name, mount_drive=True, 
+    __go(runtime, git_remote_uri, compute_name, env_name, mount_drive=True, 
         patch_file=patch_file)
 
     exit(0)
 
-def __go(ez: Ez, git_uri: str, compute_name: str, env_name: str, 
+def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: str, 
     use_acr: bool=False, build: bool=False, mount: str="none",
     patch_file: str=None):
     # env_name will be used for local name of repository and is the path
@@ -464,14 +467,14 @@ WORKDIR /home/{ez.user_name}
         remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "
                            f"cd {remote_env_path} && git pull")
         result = exec_cmd(remote_pull_cmd, 
-            uri=get_compute_uri(ez, compute_name),
+            uri=get_compute_uri(runtime, compute_name),
             private_key_path=ez.private_key_path,
             description=description)
 
         remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
                             f"git clone {git_uri} {remote_env_path}")
         result = exec_cmd(remote_clone_cmd, 
-            uri=get_compute_uri(ez, compute_name),
+            uri=get_compute_uri(runtime, compute_name),
             private_key_path=ez.private_key_path,
             description=description)
 
@@ -479,7 +482,7 @@ WORKDIR /home/{ez.user_name}
         if patch_file is not None:
             cmd = (f"pushd {remote_env_path} && git apply "
                 f"/home/{ez.user_name}/{patch_file} && popd")
-            result = exec_cmd(cmd, uri=get_compute_uri(ez, compute_name), 
+            result = exec_cmd(cmd, uri=get_compute_uri(runtime, compute_name), 
                 private_key_path=ez.private_key_path, 
                 description=f"Applying patch file: {patch_file}")
 
@@ -576,7 +579,7 @@ WORKDIR /home/{ez.user_name}
         # HACK: false for the demo
         compute_has_gpu = False
     else:
-        vm_size = get_vm_size(ez, compute_name)
+        vm_size = get_vm_size(runtime, compute_name)
         compute_has_gpu = is_gpu(vm_size)
 
     if requires_gpu and not compute_has_gpu:
@@ -656,7 +659,7 @@ WORKDIR /home/{ez.user_name}
             mount_path = os.path.expanduser("~/data")
         else:
             mount_path = f"/home/{ez.user_name}/data"
-        mount_storage_account(ez, compute_name, mount_path)
+        mount_storage_account(runtime, compute_name, mount_path)
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
@@ -665,7 +668,7 @@ WORKDIR /home/{ez.user_name}
     printf(f"Launching VS Code ... you will need to reload in "
            f"remote container by clicking the Reopen in Container button in "
            f"the notification box in the bottom right corner.", indent=2)
-    launch_vscode(ez, local_env_path)
+    launch_vscode(runtime, local_env_path)
 
     # Update ez state
     ez.active_remote_env = env_name
@@ -714,7 +717,8 @@ def go(runtime: EzRuntime, git_uri, compute_name, env_name, mount: str,
         printf(f"using {env_name} (repo name) as the env name", indent=2)
 
     if mount == "azure" or mount == "local" or mount == "none":
-        __go(ez, git_uri, compute_name, env_name, use_acr, build, mount)
+        __go(runtime, ez, git_uri, compute_name, env_name, use_acr, build, 
+            mount)
     else:
         printf_err("--mount must be azure|local|none")
     exit(0)

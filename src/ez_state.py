@@ -4,6 +4,7 @@ import json, os
 from os import path
 from dataclasses import dataclass, field
 from datetime import datetime
+from formatting import printf, printf_err
 from typing import Dict
 
 @dataclass
@@ -150,3 +151,12 @@ class EzRuntime:
             Ez: configuration object for current workspace
         """
         return self.config.workspaces[self.config.current_workspace]
+
+    def debug_print(self, text: str) -> None:
+        """Prints text only if in debug mode
+
+        Args:
+            text (str): text to print
+        """
+        if self.debug:
+            printf(text)
