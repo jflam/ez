@@ -5,7 +5,7 @@ Commands for working with portable environments
 ## Why do you need it?
 
 Imagine that you have a project, it runs on your computer, and you've created
-a GitHub repo for it. What if you wanted to keep working on that same project  
+a GitHub repo for it. What if you wanted to keep working on that same project
 on another computer - could you do that? Before you say yes, here are some
 things that you might need to do:
 
