@@ -554,7 +554,7 @@ WORKDIR /home/{ez.user_name}
               help="Compute name to migrate the environment to")
 @click.option("--env-name", "-n", required=False,
               help="Environment name to start")
-@click.option("--mount", default="None",
+@click.option("--mount", default="azure",
               help="Mount {local|azure|none} drive to /data default none")
 @click.option("--use-acr", is_flag=True, default=False,
               help="Generate container using Azure Container Registry")
