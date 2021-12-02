@@ -74,6 +74,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
         printf_err("One of src or dest must start with ':' to "
                    "indicate remote")
         exit(1)
+    runtime.save()
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
@@ -133,6 +134,7 @@ def ssh(runtime: EzRuntime, compute_name, env_name):
         printf(f"opened SSH connection to container {container_id} running "
                f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
+    runtime.save()
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
@@ -187,7 +189,7 @@ def up(runtime: EzRuntime, compute_name, env_name):
     env_name = git_remote_uri.split("/")[-1]
     __go(runtime, git_remote_uri, compute_name, env_name, mount_drive=True, 
         patch_file=patch_file)
-
+    runtime.save()
     exit(0)
 
 def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: str, 
@@ -592,4 +594,5 @@ def go(runtime: EzRuntime, git_uri, compute_name, env_name, mount: str,
             mount)
     else:
         printf_err("--mount must be azure|local|none")
+    runtime.save()
     exit(0)

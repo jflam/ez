@@ -119,6 +119,7 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
 
         ez.active_remote_compute = compute_name 
         ez.active_remote_compute_type = compute_type
+        runtime.save()
         exit(0)
     elif compute_type == "k8s":
         # TODO: implement
@@ -143,6 +144,7 @@ def update_system(runtime: EzRuntime, compute_name, compute_size):
     # Update current remote compute state
     ez.active_remote_compute = compute_name 
     ez.active_remote_compute_type = "vm"
+    runtime.save()
     exit(0)
 
 def __update_system(runtime: EzRuntime, compute_name: str, 
@@ -209,6 +211,7 @@ def __enable_acr(runtime: EzRuntime, compute_name: str) -> ExecResult:
 def enable_acr(runtime: EzRuntime, compute_name: str):
     """Enable ACR on compute_name"""
     __enable_acr(runtime, compute_name)
+    runtime.save()
     exit(0)
 
 def __enable_github(runtime: EzRuntime, 
@@ -327,6 +330,7 @@ Host github.com
 def enable_github(runtime: EzRuntime, compute_name: str, manual: bool):
     """Enable github on compute_name"""
     __enable_github(runtime, compute_name, manual)
+    runtime.save()
     exit(0)
 
 @click.command()
@@ -350,6 +354,7 @@ def delete(runtime: EzRuntime, compute_name):
     # NOTE: GitHub does not provide programmatic access to remove SSH keys
     # from GitHub, so we may need to improve the experience on this end to
     # make it easier for people to "GC" their GitHub keys.
+    runtime.save()
     exit(0)
 
 @click.command()
@@ -442,6 +447,7 @@ def start(runtime: EzRuntime, compute_name):
         description=f"starting compute node {compute_name}")
     exit_on_error(result)
     ez.active_remote_compute = compute_name
+    runtime.save()
     exit(0)
 
 @click.command()
@@ -457,6 +463,7 @@ def stop(runtime: EzRuntime, compute_name):
         description=f"stopping compute node {compute_name}")
     exit_on_error(result)
     ez.active_remote_compute = compute_name
+    runtime.save()
     exit(0)
 
 @click.command()
@@ -476,6 +483,7 @@ def ssh(runtime: EzRuntime, compute_name):
         f"{ssh_remote_host}"
     )
     printf(f"Connecting to {ssh_remote_host}")
+    runtime.save()
 
     # Use system() here because we want to have an interactive session
     system(cmd)
@@ -502,6 +510,7 @@ def select(runtime: EzRuntime, compute_name, compute_type):
     ez.active_remote_compute = compute_name
     ez.active_remote_compute_type = compute_type
     ez.active_remote_env = ""
+    runtime.save()
     exit(0)
 
 @click.command()
@@ -521,6 +530,7 @@ def info(runtime: EzRuntime, compute_name):
         specs = result.stdout.split("\t")
         print(f"  [green]INFO[/green] for {compute_name} size: {specs[2]}: "
             f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB")
+        runtime.save()
         exit(0)
     else:
         printf_err(result.stderr)
@@ -541,6 +551,7 @@ def mount(runtime: EzRuntime, compute_name: str):
     # mount_path = f"/home/{ez.user_name}/src/{env_name}/data"
     mount_path = f"/home/{ez.user_name}/data"
 
+    runtime.save()
     exit(mount_storage_account(runtime, compute_name, mount_path))
 
 @click.command()
@@ -549,4 +560,5 @@ def mount(runtime: EzRuntime, compute_name: str):
 def get_host_key(runtime: EzRuntime, compute_name):
     """Retrieve the ECDSA host key of compute_name"""
     key = get_host_ecdsa_key(runtime, compute_name)
+    runtime.save()
     print(key)
