@@ -1,7 +1,6 @@
 import json
 
-from dataclasses import dataclass
-from ez_state import EzConfig, Ez, EzRuntime
+from ez_state import Ez, EzRuntime
 
 def test_ez():
     """Test configuration of ez2 using dataclasses"""

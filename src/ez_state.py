@@ -1,10 +1,9 @@
 import constants as C
 import json, os
 
-from os import path
 from dataclasses import dataclass, field
 from datetime import datetime
-from formatting import printf, printf_err
+from formatting import printf
 from typing import Dict
 
 @dataclass

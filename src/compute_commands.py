@@ -10,7 +10,7 @@ from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu,
     jit_activate_vm, get_vm_size, get_active_compute_name, 
     mount_storage_account, get_compute_uri, get_host_ecdsa_key)
 from exec import ExecResult, exec_cmd, exec_file, exit_on_error
-from ez_state import Ez, EzRuntime
+from ez_state import EzRuntime
 from fabric import Connection
 from formatting import printf, printf_err
 from os import path, system
@@ -29,8 +29,8 @@ from rich import print
 @click.option("--no-install", "-q", is_flag=True, default=False,
               help=("Do not install system software"))
 @click.pass_obj
-def create(runtime: EzRuntime, compute_name, compute_size, compute_type, image, 
-           no_install):
+def create(runtime: EzRuntime, compute_name, compute_size, compute_type, 
+    image, no_install):
     """Create a compute node"""
 
     ez = runtime.current()
@@ -208,7 +208,6 @@ def __enable_acr(runtime: EzRuntime, compute_name: str) -> ExecResult:
 @click.pass_obj
 def enable_acr(runtime: EzRuntime, compute_name: str):
     """Enable ACR on compute_name"""
-    ez = runtime.current()
     __enable_acr(runtime, compute_name)
     exit(0)
 
@@ -327,7 +326,6 @@ Host github.com
 @click.pass_obj
 def enable_github(runtime: EzRuntime, compute_name: str, manual: bool):
     """Enable github on compute_name"""
-    ez = runtime.current()
     __enable_github(runtime, compute_name, manual)
     exit(0)
 
@@ -550,6 +548,5 @@ def mount(runtime: EzRuntime, compute_name: str):
 @click.pass_obj
 def get_host_key(runtime: EzRuntime, compute_name):
     """Retrieve the ECDSA host key of compute_name"""
-    ez = runtime.current()
     key = get_host_ecdsa_key(runtime, compute_name)
     print(key)

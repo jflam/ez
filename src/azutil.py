@@ -8,15 +8,12 @@ import re
 import shlex
 import urllib.parse
 
-from exec import (exec_cmd_return_dataframe, exec_cmd, exec_file, 
-    exit_on_error)
-from getpass import getuser
-from ez_state import Ez, EzRuntime
-from formatting import format_output_string, printf, printf_err
-from os import path, system, makedirs, path, system
+from exec import (exec_cmd_return_dataframe, exec_cmd, exit_on_error)
+from ez_state import EzRuntime
+from formatting import printf, printf_err
+from os import path, system, path, system
 from rich import print
 from rich.prompt import IntPrompt
-from shutil import rmtree
 from time import sleep
 
 # Execute commands, either locally or remotely
@@ -51,7 +48,6 @@ def login(runtime: EzRuntime):
 
 def copy_to_clipboard(runtime: EzRuntime, text: str):
     """Platform independent copy text to clipboard function"""
-    ez = runtime.current()
     if platform.system() == "Linux":
         if platform.release().find("WSL") != -1:
             clip = "clip.exe"
@@ -125,37 +121,7 @@ def get_active_compute_name(runtime: EzRuntime, compute_name) -> str:
     else:
         return compute_name
 
-def get_compute_size(runtime: EzRuntime, compute_name) -> str:
-    """Return the compute size of compute_name"""
-    # Special return value for localhost
-    ez = runtime.current()
-    if compute_name == '.':
-        return '.'
-
-    if ez.active_remote_compute_type == "k8s":
-        # TODO: handle case where compute_type is AKS
-        # For now, it always returns a GPU-enabled SKU
-        return "Standard_NC6_Promo"
-    elif ez.active_remote_compute_type == "vm":
-        runtime.debug_print(format_output_string(
-            f"get compute size for {compute_name}"))
-        get_compute_size_cmd = (
-            f"az vm show --name {compute_name} "
-            f"--resource-group {ez.resource_group} "
-            f"--query hardwareProfile.vmSize -o tsv"
-        )
-        result = exec_cmd(get_compute_size_cmd)
-        exit_on_error(result)
-        compute_size = result.stdout
-        runtime.debug_print(format_output_string(f"result: {compute_size}"))
-        return compute_size
-    else:
-        printf_err("Unknown active_remote_compute_type in ~/.ez.conf "
-                   f"detected: {ez.active_remote_compute_type}")
-        exit(1)
-
 def is_vm_running(runtime: EzRuntime, vm_name) -> bool:
-    ez = runtime.current()
     is_running = (
         f"az vm list -d -o table --query "
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
@@ -279,242 +245,6 @@ def get_vm_size(runtime: EzRuntime, vm_name) -> str:
     else:
         return result.stderr
 
-def generate_devcontainer_json(runtime: EzRuntime, jupyter_port_number, token, 
-                               local=False, has_gpu=False):
-    """Generate an appropriate devcontainer.json file"""
-    ez = runtime.current()
-    if local:
-        mount_config = (
-            f'"mounts": ["source=/var/run/docker.sock,'
-            f'target=/var/run/docker.sock,type=bind"],\n'
-        )
-        container_jupyter_dir = f"/workspaces/{ez.local_repo_name}/"
-        container_jupyter_log = (
-            f"/workspaces/{ez.local_repo_name}/jupyter.log")
-        container_location = "localhost"
-    else:
-        mount_config = (
-            f'"workspaceMount": "source=/home/{ez.user_name}'
-            f'/easy/env/{ez.active_remote_env}/repo,target='
-            f'/workspace,type=bind,consistency=cached"\n'
-            f'"workspaceFolder": "/workspace",\n'
-        )
-        container_jupyter_dir = f"/workspaces/"
-        container_jupyter_log = f"/workspaces/jupyter.log"
-        container_location = (
-            f"{ez.active_remote_compute}.{ez.region}.cloudapp.azure.com")
-    
-    if has_gpu:
-        run_args = '"runArgs": ["--gpus=all", "--ipc=host"],'
-    else:
-        run_args = ""
-    
-    # Always run as interactive user when running locally?
-
-    if local:
-        ez.user_name = getuser()
-
-    devcontainer_json = (
-        f'{{\n'
-        f'    "name": "on {container_location}",\n'
-        # Note that this is tricky - the built container image name 
-        # is the same as the environment name
-        f'    "image": "{ez.active_remote_env}",\n'
-        f'    "forwardPorts": [{jupyter_port_number}],\n'
-        f'    {run_args}\n'
-        f'    "containerUser": "{ez.user_name}",\n'
-        f'    {mount_config}'
-        f'    "settings": {{\n'
-        f'        "terminal.integrated.shell.linux": "/bin/bash",\n'
-        f'    }},\n'
-        f'    "postStartCommand": "nohup jupyter notebook --no-browser '
-        f'--port {jupyter_port_number} --ip=0.0.0.0 '
-        f'--NotebookApp.token={token} --debug {container_jupyter_dir} '
-        f'> {container_jupyter_log} 2>&1 &",\n'
-        f'    "extensions": [\n'
-        f'        "ms-python.python",\n'
-        f'        "ms-toolsai.jupyter",\n'
-        f'        "ms-python.vscode-pylance"\n'
-        f'    ],\n'
-        f'}}\n'
-    )
-    return devcontainer_json
-
-def generate_settings_json(runtime: EzRuntime, is_local, jupyter_port_number, 
-    token):
-    """Generate an appropriate settings.json file"""
-    ez = runtime.current()
-    if not is_local:
-        settings_json = (
-            f'{{\n'
-            f'    "docker.host": '
-            f'"ssh://{ez.user_name}@{ez.active_remote_compute}.'
-            f'{ez.region}.cloudapp.azure.com",\n'
-            f'}}\n'
-        )
-    else:
-        settings_json = (
-            f'{{\n'
-            f'    "python.dataScience.jupyterServerURI": "http://localhost:'
-            f'{jupyter_port_number}/?token={token}",\n'
-            # TODO: conditional for non native notebooks?
-            f'    "jupyter.jupyterServerType": "remote",\n'
-            f'}}\n'
-        )
-
-    return settings_json
-
-def generate_remote_settings_json(runtime: EzRuntime, jupyter_port_number, 
-    token):
-    """Generate remote_settings.json file"""
-    remote_settings_json = (
-        f'{{\n'
-        f'    "python.dataScience.jupyterServerURI": '
-        f'"http://localhost:{jupyter_port_number}/?token={token}"\n'
-        f'}}\n'
-    )
-    return remote_settings_json
-
-# TODO: remove this method
-def build_container_image(runtime: EzRuntime, env_name, git_uri, jupyter_port, 
-    vm_name, user_interface="code", force_git_clone=False, patch_file=None):
-    """Build a container image either locally or remote"""
-
-    ez = runtime.current()
-    git_clone_flag = "--git-clone" if force_git_clone else ""
-    is_local = True if vm_name == "." else False
-
-    # Generate command to launch build script
-    build_script = "build_local" if is_local else "build"
-    build_script_path = (
-        f"{path.dirname(path.realpath(__file__))}/scripts/{build_script}")
-    build_params = (
-        f"--env-name {env_name} "
-        f"--git-repo {git_uri} "
-        f"--port {jupyter_port} "
-        f"{git_clone_flag} "
-        f"--user-interface {user_interface} "
-        f"--user-name {ez.user_name} "
-    )
-
-    if patch_file is not None:
-        build_params += f"--patch-file {patch_file} "
-
-    # Execute script based on local vs remote case
-    if not is_local:
-        build_cmd = (
-            f"cat > /tmp/build; chmod 755 /tmp/build; "
-            f"/tmp/build {build_params}")
-    else:
-        build_cmd = f"{build_script_path} {build_params}"
-
-    runtime.debug_print(f"BUILD command: {build_cmd}")
-    if is_local:
-        print(f"BUILDING {env_name} on localhost ...")
-    else:
-        print(f"BUILDING {env_name} on {vm_name}...")
-
-    if not is_local:
-        runtime.debug_print(f"EXECUTING build script on {vm_name}...")
-        result = exec_file(build_script_path, 
-            uri=get_compute_uri(runtime, vm_name), 
-            private_key_path=ez.private_key_path, 
-            description=f"Executing build script on {vm_name}")
-        exit_on_error(result)
-    else:
-        runtime.debug_print(f"EXECUTING build script locally...")
-        result = exec_cmd(build_cmd)
-        exit_on_error(result)
-
-    runtime.debug_print(f"DONE")
-
-# TODO: remove this method
-def generate_vscode_project(runtime: EzRuntime, dir, git_uri, jupyter_port, 
-    token, vm_name, has_gpu, force_generate=False, is_k8s = False) -> str:
-    """Generate a surrogate VS Code project at dir. Returns path to the 
-    generated VS Code project."""
-    ez = runtime.current()
-    is_local = True if vm_name == "." else False
-
-    repo_name = path.basename(git_uri)
-    if not is_local:
-        local_dirname = f"{repo_name}_remote"
-    else:
-        local_dirname = repo_name
-
-    path_to_vsc_project = f"{dir}/{local_dirname}"
-    if path.exists(path_to_vsc_project) and force_generate:
-        runtime.debug_print(f"REMOVING existing directory: {path_to_vsc_project}")
-        rmtree(path_to_vsc_project)
-
-    print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
-
-    # For local projects only, git clone into path_to_vsc_project
-    if is_local:
-        if not path.exists(path_to_vsc_project):
-            print(f"CLONING {git_uri} into {path_to_vsc_project}...")
-            result = exec_cmd(f"git clone {git_uri} {repo_name}")
-            exit_on_error(result)
-        else:
-            print(
-                f"SKIPPING git clone of {git_uri} as there is already a "
-                f"{path_to_vsc_project} directory")
-
-    # Do not generate .devcontainer for k8s
-    if not is_k8s:
-        if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
-            makedirs(f"{path_to_vsc_project}/.devcontainer")
-
-    if not path.exists(f"{path_to_vsc_project}/.vscode"):
-        makedirs(f"{path_to_vsc_project}/.vscode")
-
-    if not is_k8s:
-        devcontainer_path = (
-            f"{path_to_vsc_project}/.devcontainer/devcontainer.json")
-        devcontainer_json = generate_devcontainer_json(
-            ez, jupyter_port, token, is_local, has_gpu
-        )
-        print(f"GENERATE devcontainer.json: {devcontainer_path}")
-        with open(devcontainer_path, 'w') as file:
-            file.write(devcontainer_json)
-
-    settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
-    settings_json = generate_settings_json(runtime, is_local, jupyter_port, 
-        token)
-
-    print(f"GENERATE settings.json: {settings_json_path}")
-    with open(settings_json_path, "w") as file:
-        file.write(settings_json)
-
-    if not is_local:
-        remote_settings_json_path = (
-            f"{path_to_vsc_project}/.vscode/remote_settings.json")
-        remote_settings_json = generate_remote_settings_json(runtime, 
-                                                             jupyter_port, 
-                                                             token)
-
-        print(f"GENERATE remote_settings.json: {remote_settings_json_path}")
-        with open(remote_settings_json_path, "w") as file:
-            file.write(remote_settings_json)
-
-        write_settings_json_cmd = (
-            f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
-            f'easy/env/{ez.active_remote_env}/repo/.vscode; '
-            f'mv /tmp/settings.json /home/{ez.user_name}/'
-            f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
-        )
-        # TODO: this isn't supported in exec_file today where we pipe in 
-        # the contents of remote_settings_json_path into the ssh command
-        # in write_settings_json_cmd on the remote machine
-        # This doesn't matter because this method will be deprecated too
-        # result = exec_file(remote_settings_json_path, 
-        #     get_compute_uri(vm_name), private_key_path=)
-        # exec_script_using_ssh(runtime, remote_settings_json_path, 
-        #                       vm_name, 
-        #                       write_settings_json_cmd)
-    
-    return path_to_vsc_project
-
 def launch_vscode(runtime: EzRuntime, dir):
     """Launch either VS Code or VS Code Insiders on dir"""
 
@@ -543,15 +273,6 @@ def launch_vscode(runtime: EzRuntime, dir):
     cmdline = f"{vscode_cmd} {path.expanduser(dir)}"
     runtime.debug_print(f"ENCODED path: {cmdline}")
     system(cmdline)
-
-def install_local_dependencies():
-    """Install local dependencies and validate they are there"""
-
-    # install brew
-    # install wget
-    # install python/conda
-    # install docker
-    # install ruamel.yaml (via conda!)
 
 def enable_jit_access_on_vm(runtime: EzRuntime, vm_name: str):
     return

@@ -8,7 +8,7 @@ import compute_commands
 import env_commands
 import workspace_commands
 
-from ez_state import Ez, EzConfig, EzRuntime
+from ez_state import EzRuntime
 from formatting import printf_err
 from os import system
 from rich import print
@@ -186,9 +186,7 @@ def env():
     """Manage environments"""
     pass
 
-# env.add_command(env_commands.ls)
 env.add_command(env_commands.cp)
 env.add_command(env_commands.ssh)
-# env.add_command(env_commands.stop)
 env.add_command(env_commands.up)
 env.add_command(env_commands.go)

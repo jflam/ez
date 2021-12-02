@@ -1,138 +1,14 @@
-import click, glob, json, os, random, shutil, subprocess, uuid
+import click, glob, json, os, shutil, subprocess
 import constants as C
 
-from azutil import (build_container_image, get_vm_size, launch_vscode, 
-    pick_vm, generate_vscode_project, is_gpu, jit_activate_vm, 
-    get_active_compute_name, get_compute_size, mount_storage_account,
+from azutil import (get_vm_size, launch_vscode, 
+    pick_vm, is_gpu, jit_activate_vm, 
+    get_active_compute_name, mount_storage_account,
     get_compute_uri)
 from exec import exec_cmd, exit_on_error
 from ez_state import Ez, EzRuntime
 from formatting import printf, printf_err
 from os import getcwd, path
-
-def launch_user_interface(runtime: EzRuntime, user_interface, 
-    path_to_vscode_project, jupyter_port, token):
-    """Bind user_interface to the running instance"""
-    ez = runtime.current()
-    if user_interface == "code":
-        printf(f"launch VS Code {path_to_vscode_project}")
-        launch_vscode(runtime, path_to_vscode_project)
-    elif user_interface == "notebook" or user_interface == "lab":
-        printf(f"launch Classic Jupyter "
-              f"http://localhost:{jupyter_port}?token={token}")
-
-def run_k8s(runtime: EzRuntime, env_name, git_uri, jupyter_port, compute_name,
-            user_interface, git_clone, token, has_gpu, force_generate):
-    """DEPRECATED"""
-    ez = runtime.current()
-    printf_err("k8s support needs reimplementation")
-    exit(1)
-
-    # path_to_vscode_project = generate_vscode_project(runtime, getcwd(), git_uri, 
-    #                                                  jupyter_port, token, 
-    #                                                  ".", has_gpu, 
-    #                                                  force_generate, True)
-
-    # # ASSUME if path_to_vscode_project exists that image built alredy
-    # if not path.exists(path_to_vscode_project):
-    #     build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
-    #                 f"--no-run {path_to_vscode_project}")
-    #     print(f"BUILD Docker image locally: {build_cmd}")
-    #     result = exec_cmd(build_cmd)
-    #     exit_on_error(result)
-    #     docker_cmd = (f"docker push jflam/{env_name}")
-    #     print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
-    #     result = exec_cmd(docker_cmd)
-    #     exit_on_error(result)
-
-    # launch_user_interface(runtime, user_interface, path_to_vscode_project, 
-    #                       jupyter_port, token)
-
-    # jupyter_variant = "notebook"
-    # if user_interface == "lab":
-    #     jupyter_variant = "lab"
-
-    # kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} "
-    #            "--spec '{\"resources\":{\"limits\":{\"nvidia.com/gpu\":\"1\"}}}' "
-    #            f"jflam/{env_name} "
-    #            f"nohup jupyter {jupyter_variant} --no-browser "
-    #            f"--port {jupyter_port} --ip=0.0.0.0 "
-    #            f"--NotebookApp.token={token} .")
-
-    # # kdo blocks while syncing local filesystem into the pod
-    # # CTRL+C will terminate.
-    # print(f"START pod {kdo_cmd}")
-    # print("TERMINATE using CTRL+C")
-    # result = exec_cmd(kdo_cmd)
-    # exit_on_error(result)
-
-def run_vm(runtime: EzRuntime, env_name, git_uri, jupyter_port, compute_name,
-           user_interface, git_clone, token, has_gpu, force_generate):
-    """DEPRECATED"""
-    ez = runtime.current()
-    build_container_image(runtime, env_name, git_uri, jupyter_port, 
-        compute_name, user_interface, git_clone)
-    path_to_vscode_project = generate_vscode_project(runtime, getcwd(), git_uri, 
-                                                     jupyter_port, token, 
-                                                     compute_name, has_gpu, 
-                                                     force_generate)
-
-    launch_user_interface(runtime, user_interface, path_to_vscode_project, 
-                          jupyter_port, token)
-
-@click.command()
-@click.option("--env-name", "-n", required=True, 
-              help="Name of environment to start")
-@click.option("--git-uri", "-g", required=True, 
-              help="URI of git repo to load in the environment")
-@click.option("--user-interface", "-u", default="code", 
-              help="UI {notebook|lab|code} to use. Default is code")
-@click.option("--compute-name", "-c", 
-              help=("compute node to use (default is the "
-              "current active compute node)"))
-@click.option("--git-clone", is_flag=True, 
-              help=("Force fresh clone of GitHub repo before "
-              "starting environment"))
-@click.option("--force-generate", is_flag=True, default=False,
-              help="Force generation of the local VS Code project")
-@click.pass_obj
-def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name, 
-    git_clone, force_generate):
-    """DEPRECATED"""
-    ez = runtime.current()
-    printf_err("deprecated: Use ez env go instead")
-    exit(0)
-
-    compute_name = get_active_compute_name(runtime, compute_name)
-
-    # Initialize context
-    ez.active_remote_compute = compute_name
-    ez.active_remote_env = env_name
-    ez.local_repo_name = path.basename(git_uri)
-
-    jupyter_port = random.randint(1024, 8192)
-    token = uuid.uuid4().hex 
-
-    compute_size = get_compute_size(runtime, compute_name)
-    has_gpu = is_gpu(compute_size)
-
-    if ez.active_remote_compute_type == 'vm':
-        run_vm(runtime, env_name, git_uri, jupyter_port, compute_name,
-               user_interface, git_clone, token, has_gpu, force_generate)
-    elif ez.active_remote_compute_type == 'k8s':
-        run_k8s(runtime, env_name, git_uri, jupyter_port, compute_name,
-                user_interface, git_clone, token, has_gpu, force_generate)
-    else:
-        print(f"Unknown active_remote_compute_type in ~/.ez.conf: "
-            f"{ez.active_remote_compute_type}")
-        exit(1)
-    exit(0)
-
-@click.command()
-@click.pass_obj
-def ls(runtime: EzRuntime):
-    """List running environments"""
-    pass
 
 @click.command()
 @click.option("--compute-name", "-c", 
@@ -257,11 +133,6 @@ def ssh(runtime: EzRuntime, compute_name, env_name):
         printf(f"opened SSH connection to container {container_id} running "
                f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
-
-@click.command()
-@click.pass_obj
-def stop(runtime: EzRuntime):
-    pass
 
 @click.command()
 @click.option("--compute-name", "-c", required=False,
