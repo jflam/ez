@@ -65,7 +65,15 @@ configured yourself:
 
 Take a look at this quick video to see `ez` in action:
 
-TODO: embedded YouTube video
+<div class="youtube">
+    <iframe
+        width=560 height=315
+        src="https://www.youtube.com/embed/u1nmx2rd5Jk"
+        webkitallowfullscreen
+        mozallowfullscreen
+        allowfullscreen>
+    </iframe>
+</div>
 
 WARNING: this is a proof-of-concept and is not production software. Think of
 this as more of a prototype that can be used to better understand the problems
