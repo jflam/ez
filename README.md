@@ -46,7 +46,7 @@ There are two parameters to `ez env go`:
 `ez` will open the GitHub repo on `computer_name` and start a VS Code session
 bound to the contents of that GitHub repo. 
 
-![fast.ai notebooks running in VS Code](./images/screenshot.png|width=500)
+![fast.ai notebooks running in VS Code](./images/screenshot.png | width=500)
 
 You can do anything that you would normally do on a computer that you
 configured yourself:
