@@ -61,7 +61,7 @@ az login
 # Install ez
 mkdir ~/src 
 cd ~/src
-git clone git@github.com:jflam/ez
+git clone https://github.com/jflam/ez
 cd ez/src 
 python setup.py install
 
