@@ -164,27 +164,28 @@ def create_workspace() -> Ez:
         cmd = (f"az acr list --resource-group {workspace_resource_group} "
                "-o tsv")
         df = exec_cmd_return_dataframe(cmd)
-        count = df.shape[0]
-
-        if count == 0:
+        if df is None:
             registry_name = ""
             registry_region = ""
-        elif count == 1:
-            registry_name = df.iloc[0][10]
-            registry_region = df.iloc[0][8]
         else:
-            for i, name in enumerate(df.iloc[:,9]):
-                print(f"{i} {name}")
-            
-            while True:
-                choice = IntPrompt.ask("Enter registry # to use", default=-1)
-                if choice >= 0 and choice < df.shape[0]:
-                    break
-            
-            registry_name = df.iloc[choice][10]
-            registry_region = df.iloc[choice][8]
+            count = df.shape[0]
+            if count == 1:
+                # TODO: soemthing less fragile
+                registry_name = df.iloc[0][10]
+                registry_region = df.iloc[0][8]
+            else:
+                for i, name in enumerate(df.iloc[:,9]):
+                    print(f"{i} {name}")
+                
+                while True:
+                    choice = IntPrompt.ask("Enter registry # to use", default=-1)
+                    if choice >= 0 and choice < df.shape[0]:
+                        break
+                
+                registry_name = df.iloc[choice][10]
+                registry_region = df.iloc[choice][8]
 
-        if registry_name is not None:
+        if registry_name != "":
             printf(f"Selected registry {registry_name} in {registry_region}")
 
         # Discover storage account

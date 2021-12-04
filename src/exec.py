@@ -8,7 +8,7 @@ from formatting import format_output_string, printf_err
 from io import StringIO
 from rich.progress import (Progress, SpinnerColumn, TextColumn, 
     TimeElapsedColumn)
-from typing import Union
+from typing import Optional, Union
 
 class ExecResult:
     exit_code: int 
@@ -187,8 +187,11 @@ def exit_on_error(result: ExecResult):
         printf_err(result.stderr)
         exit(result.exit_code)
 
-def exec_cmd_return_dataframe(cmd):
+def exec_cmd_return_dataframe(cmd) -> Optional[pd.DataFrame]:
+    """Execute the command and return a dataframe or None"""
     result = exec_cmd(cmd)
     exit_on_error(result)
+    if result.stdout == "":
+        return None
     stream = StringIO(result.stdout)
     return pd.read_csv(stream, sep="\t", header=None)
