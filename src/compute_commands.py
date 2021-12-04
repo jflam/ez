@@ -15,6 +15,7 @@ from fabric import Connection
 from formatting import printf, printf_err
 from os import path, system
 from rich import print
+from typing import Optional
 
 @click.command()
 @click.option("--name", "-n", required=True, default="",
@@ -48,19 +49,14 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
         print(result.stdout)
         exit(1)
 
-    # Check to see if the compute-name is taken already
-    cmd = (f"az vm list --resource-group {ez.resource_group} -d -o tsv "
-        f"--query \"[?name=='{name}']\"")
+    # Use the host command to see if there is a DNS record for name already
+    # in this region.
+    cmd = f"host {name}.{ez.region}.cloudapp.azure.com"
     result = exec_cmd(cmd)
-    if result.exit_code != 0:
-        # Don't exit on error as failure here will be caught when trying to
-        # create the VM instance.
-        printf_err(result.stderr)
-    else:
-        if result.stdout != "":
-            printf_err(f"The compute {name} is already "
-                "taken. Try a different --name")
-            exit(1)
+    if "has address" in result.stdout:
+        printf_err(f"There is already a host {name}.{ez.region}"
+            ".cloudapp.azure.com. Try a different name.")
+        exit(1)
 
     # Select provisioning scripts for the VM based on whether compute_size is
     # a GPU
@@ -74,15 +70,16 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
             f"{compute_size} in resource group {ez.resource_group}...")
 
         cmd = (
-            f"az vm create --name {name}"
-            f"             --resource-group {ez.resource_group}"
-            f"             --size {compute_size}"
-            f"             --image {image}"
-            f"             --ssh-key-values {ez.private_key_path}.pub"
-            f"             --admin-username {ez.user_name}"
-            f"             --public-ip-address-dns-name {name}"
-            f"             --public-ip-sku Standard"
-            f"             --os-disk-size-gb {os_disk_size}"
+            f"az vm create --name {name} "
+            f"--resource-group {ez.resource_group} "
+            f"--size {compute_size} "
+            f"--image {image} "
+            f"--ssh-key-values {ez.private_key_path}.pub "
+            f"--admin-username {ez.user_name} "
+            f"--public-ip-address-dns-name {name} "
+            f"--public-ip-sku Standard "
+            f"--os-disk-size-gb {os_disk_size} "
+            f"-o json"
         )   
         result = exec_cmd(cmd, description=description)
         exit_on_error(result)
@@ -114,6 +111,7 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
 
         # Ask machine to reboot (need to swallow exception here)
         uri = get_compute_uri(runtime, name)
+        print("6")
         exec_cmd("sudo reboot", uri=uri, 
             private_key_path=ez.private_key_path, 
             description=f"Rebooting {name}")
@@ -170,12 +168,19 @@ def __update_system(runtime: EzRuntime, compute_name: str,
         private_key_path=ez.private_key_path, description=description)
     return result
 
-def __enable_acr(runtime: EzRuntime, compute_name: str) -> ExecResult:
+def __enable_acr(runtime: EzRuntime, 
+    compute_name: str) -> Optional[ExecResult]:
     """Internal function to enable ACR on compute_name"""
+
+    ez = runtime.current()
+
+    # Do not enable if there isn't a configured ACR in this workspace
+    if ez.registry_name == "":
+        return None
+
     # Repository name maps to workspace name
     # Environment name maps to tag
     # e.g., jflamregistry.azurecr.io/ezws:pytorch_tutorials
-    ez = runtime.current()
     repository_name = ez.workspace_name
 
     # az acr token create will recreate token if exists already
@@ -287,7 +292,8 @@ Host github.com
 
     # TODO: consider writing a copy to server function using fabric
     hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
-    with Connection(hostname, user=ez.user_name) as c:
+    with Connection(hostname, user=ez.user_name, 
+        connect_kwargs={ "key_filename": [ez.private_key_path] }) as c:
         c.put("/tmp/gh_config", f"/home/{ez.user_name}/gh_config")
 
     result = exec_cmd(f"cat /home/{ez.user_name}/gh_config "
@@ -480,7 +486,7 @@ def stop(runtime: EzRuntime, name: str):
     exit(0)
 
 @click.command()
-@click.option("--name", "-n", help="Name of compute to SSH into")
+@click.option("--name", "-n", default="", help="Name of compute to SSH into")
 @click.pass_obj
 def ssh(runtime: EzRuntime, name: str):
     """SSH to a virtual machine"""
@@ -504,6 +510,8 @@ def ssh(runtime: EzRuntime, name: str):
 
     # Use system() here because we want to have an interactive session
     system(cmd)
+    ez.active_remote_compute = name
+    exit(0)
 
 @click.command()
 @click.option("--name", "-n", prompt="Name of compute node", 
