@@ -434,7 +434,10 @@ def ls(runtime: EzRuntime, all: bool):
                 df.at[i, "RAM(GB)"] = entry["memory"]
                 df.at[i, "Cores"] = entry["cores"]
 
-    print(df)
+    if len(df.index) == 0:
+        printf(f"No VMs in workspace {ez.workspace_name}", indent=2)
+    else:
+        print(df)
     exit(0)
 
 @click.command()
