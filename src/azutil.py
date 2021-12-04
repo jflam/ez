@@ -108,22 +108,35 @@ def is_gpu(vm_size):
     result = vm_size in azure_gpu_sizes
     return result
 
-def get_active_compute_name(runtime: EzRuntime, compute_name) -> str:
-    """Get the active compute name or exit. Passing None for compute_name
+def get_active_compute_name(runtime: EzRuntime, name: str) -> str:
+    """Get the active compute name or exit. Passing '' for compute_name
     returns the active remote compute, if it is set."""
     ez = runtime.current()
-    if compute_name == None:
+    if name == "":
         if ez.active_remote_compute == "":
-            printf_err("No active remote compute: specify --compute-name")
+            printf_err("No active remote compute: must specify --name")
             exit(1)
         else:
             return ez.active_remote_compute
     else:
-        return compute_name
+        return name
+
+def get_active_env_name(runtime: EzRuntime, env_name: str) -> str:
+    """Get the active environment name or exit. Passing '' for compute_name
+    returns the active remote compute, if it is set."""
+    ez = runtime.current()
+    if env_name == "":
+        if ez.active_remote_env == "":
+            printf_err("No active remote env: must specify --env-name")
+            exit(1)
+        else:
+            return ez.active_remote_env
+    else:
+        return env_name
 
 def is_vm_running(runtime: EzRuntime, vm_name) -> bool:
     is_running = (
-        f"az vm list -d -o table --query "
+        f"az vm list -d -o tsv --query "
         f"\"[?name=='{vm_name}'].{{PowerState:powerState}}\" | "
         f"grep \"VM running\" > /dev/null"
     )

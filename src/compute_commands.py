@@ -17,20 +17,21 @@ from os import path, system
 from rich import print
 
 @click.command()
-@click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to create")
+@click.option("--name", "-n", required=True, default="",
+    prompt="Name of compute to create",
+    help="Name of compute to create")
 @click.option("--compute-size", "-s", 
-              help="Size of Azure VM or '.' for local creation")
+    help="Size of Azure VM or '.' for local creation")
 @click.option("--compute-type", "-t", default="vm",
-              help=("Type of compute: vm (virtual machine) or "
-              "k8s (Kubernetes)"))
+    help=("Type of compute: vm (virtual machine) or "
+    "k8s (Kubernetes)"))
 @click.option("--image", "-i", default="UbuntuLTS", 
-              help="Image to use to create the VM (default UbuntuLTS)")
+    help="Image to use to create the VM (default UbuntuLTS)")
 @click.option("--no-install", "-q", is_flag=True, default=False,
-              help=("Do not install system software"))
+    help=("Do not install system software"))
 @click.pass_obj
-def create(runtime: EzRuntime, compute_name, compute_size, compute_type, 
-    image, no_install):
+def create(runtime: EzRuntime, name: str, compute_size: str, 
+    compute_type: str, image: str, no_install: bool):
     """Create a compute node"""
 
     ez = runtime.current()
@@ -48,8 +49,8 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
         exit(1)
 
     # Check to see if the compute-name is taken already
-    cmd = (f"az vm list --resource-group {ez.resource_group} -d -o table "
-        f"--query \"[?name=='{compute_name}']\"")
+    cmd = (f"az vm list --resource-group {ez.resource_group} -d -o tsv "
+        f"--query \"[?name=='{name}']\"")
     result = exec_cmd(cmd)
     if result.exit_code != 0:
         # Don't exit on error as failure here will be caught when trying to
@@ -57,8 +58,8 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
         printf_err(result.stderr)
     else:
         if result.stdout != "":
-            printf_err(f"The compute {compute_name} is already "
-                "taken. Try a different --compute-name")
+            printf_err(f"The compute {name} is already "
+                "taken. Try a different --name")
             exit(1)
 
     # Select provisioning scripts for the VM based on whether compute_size is
@@ -69,17 +70,17 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
         os_disk_size = 256
 
         description = (
-            f"creating virtual machine {compute_name} size "
+            f"creating virtual machine {name} size "
             f"{compute_size} in resource group {ez.resource_group}...")
 
         cmd = (
-            f"az vm create --name {compute_name}"
+            f"az vm create --name {name}"
             f"             --resource-group {ez.resource_group}"
             f"             --size {compute_size}"
             f"             --image {image}"
             f"             --ssh-key-values {ez.private_key_path}.pub"
             f"             --admin-username {ez.user_name}"
-            f"             --public-ip-address-dns-name {compute_name}"
+            f"             --public-ip-address-dns-name {name}"
             f"             --public-ip-sku Standard"
             f"             --os-disk-size-gb {os_disk_size}"
         )   
@@ -98,26 +99,26 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
         # Unfortunately, this is a very slow code path for some reason and
         # it takes ~30s to retrieve the host's ECDSA key.
 
-        host_key = get_host_ecdsa_key(runtime, compute_name)
-        hostname = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+        host_key = get_host_ecdsa_key(runtime, name)
+        hostname = f"{name}.{ez.region}.cloudapp.azure.com"
         
         with open(os.path.expanduser("~/.ssh/known_hosts"), "a") as f:
             f.write(f"{hostname} {host_key}")
 
         # TODO: analyze output for correct flags
-        enable_jit_access_on_vm(runtime, compute_name)
+        enable_jit_access_on_vm(runtime, name)
 
-        __update_system(runtime, compute_name, compute_size)
-        __enable_acr(runtime, compute_name)
-        __enable_github(runtime, compute_name)
+        __update_system(runtime, name, compute_size)
+        __enable_acr(runtime, name)
+        __enable_github(runtime, name)
 
         # Ask machine to reboot (need to swallow exception here)
-        uri = get_compute_uri(runtime, compute_name)
+        uri = get_compute_uri(runtime, name)
         exec_cmd("sudo reboot", uri=uri, 
             private_key_path=ez.private_key_path, 
-            description=f"Rebooting {compute_name}")
+            description=f"Rebooting {name}")
 
-        ez.active_remote_compute = compute_name 
+        ez.active_remote_compute = name 
         ez.active_remote_compute_type = compute_type
         runtime.save()
         exit(0)
@@ -129,20 +130,22 @@ def create(runtime: EzRuntime, compute_name, compute_size, compute_type,
         print(f"Unknown --compute-type: {compute_type}")
         exit(1)
 
-@click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to update")
+@click.option("--name", "-n", required=True, default="",
+    prompt="Name of compute to update", help="Name of compute to update")
 @click.option("--compute-size", "-s", 
-              help="Size of Azure VM or '.' for local update")
+    help="Size of Azure VM or '.' for local update")
 @click.command()
 @click.pass_obj
-def update_system(runtime: EzRuntime, compute_name, compute_size):
-    """Update the system software on compute_name"""
+def update_system(runtime: EzRuntime, name: str, compute_size: str):
+    """Update the system software on name"""
     ez = runtime.current()
-    result = __update_system(runtime, compute_name, compute_size)
+    name = get_active_compute_name(runtime, name)
+
+    result = __update_system(runtime, name, compute_size)
     exit_on_error(result)
 
     # Update current remote compute state
-    ez.active_remote_compute = compute_name 
+    ez.active_remote_compute = name 
     ez.active_remote_compute_type = "vm"
     runtime.save()
     exit(0)
@@ -204,18 +207,20 @@ def __enable_acr(runtime: EzRuntime, compute_name: str) -> ExecResult:
     exit_on_error(result)
     return result
 
-@click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to update")
+@click.option("--name", "-n", required=True, default="",
+    prompt="Name of compute to enable ACR on",
+    help="Name of compute to enable ACR on")
 @click.command()
 @click.pass_obj
-def enable_acr(runtime: EzRuntime, compute_name: str):
+def enable_acr(runtime: EzRuntime, name: str):
     """Enable ACR on compute_name"""
-    __enable_acr(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
+
+    __enable_acr(runtime, name)
     runtime.save()
     exit(0)
 
-def __enable_github(runtime: EzRuntime, 
-    compute_name: str, 
+def __enable_github(runtime: EzRuntime, compute_name: str, 
     manual: bool=False):
     """Internal function to enable github on compute_name"""
     # Generate a new public/private key pair on compute_name
@@ -321,32 +326,35 @@ Host github.com
             description="Registering public key with GitHub")
         exit_on_error(result)
 
-@click.option("--compute-name", "-c", required=True, 
-              help="Name of compute to update")
+@click.option("--name", "-n", required=True, default="",
+    prompt="Name of compute to enable GitHub on",
+    help="Name of compute to enable GitHub on")
 @click.option("--manual", "-m", is_flag=True, default=False,
-              help=("Manual install: won't use GitHub CLI"))
+    help=("Manual install: won't use GitHub CLI"))
 @click.command()
 @click.pass_obj
-def enable_github(runtime: EzRuntime, compute_name: str, manual: bool):
+def enable_github(runtime: EzRuntime, name: str, manual: bool):
     """Enable github on compute_name"""
-    __enable_github(runtime, compute_name, manual)
+    name = get_active_compute_name(runtime, name)
+    __enable_github(runtime, name, manual)
     runtime.save()
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-c", help="Name of VM to delete")
+@click.option("--name", "-n", required=True, default="",
+    prompt="Name of VM to delete", help="Name of VM to delete")
 @click.pass_obj
-def delete(runtime: EzRuntime, compute_name):
+def delete(runtime: EzRuntime, name: str):
     """Delete a compute node"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(runtime, compute_name)
-    description = f"deleting compute node {compute_name}"
-    result = exec_cmd((f"az vm delete --yes --name {compute_name} "
+    name = get_active_compute_name(runtime, name)
+    description = f"deleting compute node {name}"
+    result = exec_cmd((f"az vm delete --yes --name {name} "
         f"--resource-group {ez.resource_group}"), description=description)
     exit_on_error(result)
 
     # Remove this VM from known_hosts 
-    uri = f"{compute_name}.{ez.region}.cloudapp.azure.com"
+    uri = f"{name}.{ez.region}.cloudapp.azure.com"
     result = exec_cmd(f"ssh-keygen -R {uri}", 
         description=f"Removing {uri} from known_hosts")
     exit_on_error(result)
@@ -359,7 +367,7 @@ def delete(runtime: EzRuntime, compute_name):
 
 @click.command()
 @click.option("--all", "-a", is_flag=True, default=False,
-              help=("List all (current workspace is default)"))
+    help=("List all (current workspace is default)"))
 @click.pass_obj
 def ls(runtime: EzRuntime, all: bool):
     """List available compute nodes"""
@@ -430,53 +438,59 @@ def ls(runtime: EzRuntime, all: bool):
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-c", help="Name of VM to start")
+@click.option("--name", "-n", prompt="Name of compute to start",
+    help="Name of compute to start")
 @click.pass_obj
-def start(runtime: EzRuntime, compute_name):
+def start(runtime: EzRuntime, name: str):
     """Start a virtual machine"""
 
     ez = runtime.current()
-    if compute_name == ".":
+    if name == ".":
         printf("Nothing done, local compute is already started")
         exit(0)
 
-    compute_name = get_active_compute_name(runtime, compute_name)
-    jit_activate_vm(runtime, compute_name)
-    result = exec_cmd(f"az vm start --name {compute_name} "
+    name = get_active_compute_name(runtime, name)
+    jit_activate_vm(runtime, name)
+    result = exec_cmd(f"az vm start --name {name} "
         f"--resource-group {ez.resource_group}",
-        description=f"starting compute node {compute_name}")
+        description=f"starting compute node {name}")
     exit_on_error(result)
-    ez.active_remote_compute = compute_name
+    ez.active_remote_compute = name
     runtime.save()
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-c", help="Name of VM to stop")
+@click.option("--name", "-n", prompt="Name of compute to stop",
+    help="Name of compute to stop")
 @click.pass_obj
-def stop(runtime: EzRuntime, compute_name):
+def stop(runtime: EzRuntime, name: str):
     """Stop a virtual machine"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
     # TODO: get compute_type too and fail for now on this
-    result = exec_cmd(f"az vm deallocate --name {compute_name} "
+    result = exec_cmd(f"az vm deallocate --name {name} "
         f"--resource-group {ez.resource_group}",
-        description=f"stopping compute node {compute_name}")
+        description=f"stopping compute node {name}")
     exit_on_error(result)
-    ez.active_remote_compute = compute_name
+    ez.active_remote_compute = name
     runtime.save()
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-c", help="Name of VM to ssh into")
+@click.option("--name", "-n", help="Name of compute to SSH into")
 @click.pass_obj
-def ssh(runtime: EzRuntime, compute_name):
+def ssh(runtime: EzRuntime, name: str):
     """SSH to a virtual machine"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
     # TODO: get compute_type too and fail for now on this
-    jit_activate_vm(runtime, compute_name)
-    ez.active_remote_compute = compute_name
-    ssh_remote_host = get_compute_uri(runtime, compute_name)
+    if name == "":
+        printf_err("--name parameter must be specified "
+                    "because there isn't an active compute environment.")
+        exit(1)
+    jit_activate_vm(runtime, name)
+    ez.active_remote_compute = name
+    ssh_remote_host = get_compute_uri(runtime, name)
     cmd = (
         f"ssh -i {ez.private_key_path} "
         f" -o StrictHostKeyChecking=no "
@@ -489,46 +503,47 @@ def ssh(runtime: EzRuntime, compute_name):
     system(cmd)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of compute node")
+@click.option("--name", "-n", prompt="Name of compute node", 
+    help="Name of compute node")
 @click.option("--compute-type", "-t", default="vm",
-              help=("Type of compute: vm (virtual machine) or "
-              "k8s (Kubernetes)"))
+    help=("Type of compute: vm (virtual machine) or "
+    "k8s (Kubernetes)"))
 @click.pass_obj
-def select(runtime: EzRuntime, compute_name, compute_type):
+def select(runtime: EzRuntime, name: str, compute_type: str):
     """Select a compute node"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
 
     # TODO: implement menu
     if compute_type == "vm":
         # Just select the compute node now
-        print(f"SELECTING VM {compute_name}")
+        print(f"SELECTING VM {name}")
     elif compute_type == "k8s":
-        result = exec_cmd(f"kubectl config use-context {compute_name}")
+        result = exec_cmd(f"kubectl config use-context {name}")
         exit_on_error(result)
 
-    ez.active_remote_compute = compute_name
+    ez.active_remote_compute = name
     ez.active_remote_compute_type = compute_type
     ez.active_remote_env = ""
     runtime.save()
     exit(0)
 
 @click.command()
-@click.option("--compute-name", "-n", help="Name of compute node")
+@click.option("--name", "-n", help="Name of compute node")
 @click.pass_obj
-def info(runtime: EzRuntime, compute_name):
+def info(runtime: EzRuntime, name: str):
     """Get info about compute hardware"""
     ez = runtime.current()
-    compute_name = get_active_compute_name(runtime, compute_name)
-    compute_size = get_vm_size(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
+    compute_size = get_vm_size(runtime, name)
     # TODO: do this with AKS and the correct compute pool
 
     # Now use the vm_size to get hardware details 
     result = exec_cmd(f"az vm list-sizes -l {ez.region} --output tsv "
-        f"| grep {compute_size}", description=f"Querying {compute_name}")
+        f"| grep {compute_size}", description=f"Querying {name}")
     if result.exit_code == 0:
         specs = result.stdout.split("\t")
-        print(f"  [green]INFO[/green] for {compute_name} size: {specs[2]}: "
+        print(f"  [green]INFO[/green] for {name} size: {specs[2]}: "
             f"cores: {specs[3]} RAM: {specs[1]}MB Disk: {specs[5].strip()}MB")
         runtime.save()
         exit(0)
@@ -537,14 +552,14 @@ def info(runtime: EzRuntime, compute_name):
         exit(result.exit_code)
 
 @click.command()
-@click.option("--compute-name", "-c", required=False,
-              help="Compute name to migrate the environment to")
+@click.option("--name", "-n", 
+    prompt="Name of compute to mount Azure File share on",
+    help="Name of compute to mount Azure File share on")
 @click.pass_obj
-def mount(runtime: EzRuntime, compute_name: str):
+def mount(runtime: EzRuntime, name: str):
     """Mount the workspace file share onto the compute and storage"""
     ez = runtime.current()
-    if compute_name is None:
-        compute_name = ez.active_remote_compute
+    name = get_active_compute_name(runtime, name)
 
     # TODO: figure out whether to mount onto VM or onto each env
     # TODO: figure out where to mount - for now let's call it data
@@ -552,13 +567,16 @@ def mount(runtime: EzRuntime, compute_name: str):
     mount_path = f"/home/{ez.user_name}/data"
 
     runtime.save()
-    exit(mount_storage_account(runtime, compute_name, mount_path))
+    exit(mount_storage_account(runtime, name, mount_path))
 
 @click.command()
-@click.option("--compute-name", "-c", help="Name of host to get key from")
+@click.option("--name", "-n", 
+    prompt="Name of compute to retrieve ECDSA public key from", 
+    help="Name of compute to retrieve ECDSA public key from")
 @click.pass_obj
-def get_host_key(runtime: EzRuntime, compute_name):
+def get_host_key(runtime: EzRuntime, name: str):
     """Retrieve the ECDSA host key of compute_name"""
-    key = get_host_ecdsa_key(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
+    key = get_host_ecdsa_key(runtime, name)
     runtime.save()
     print(key)

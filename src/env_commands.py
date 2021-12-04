@@ -1,7 +1,7 @@
 import click, glob, json, os, shutil, subprocess
 import constants as C
 
-from azutil import (get_vm_size, launch_vscode, 
+from azutil import (get_active_env_name, get_vm_size, launch_vscode, 
     pick_vm, is_gpu, jit_activate_vm, 
     get_active_compute_name, mount_storage_account,
     get_compute_uri)
@@ -11,13 +11,12 @@ from formatting import printf, printf_err
 from os import getcwd, path
 
 @click.command()
-@click.option("--compute-name", "-c", 
-              help=("compute node to use (default is the "
-              "current active compute node)"))
+@click.option("--name", "-n", required=True, default="",
+    help=("compute node to use (default is the current active compute node)"))
 @click.argument("src")
 @click.argument("dest")
 @click.pass_obj
-def cp(runtime: EzRuntime, compute_name: str, src: str, dest: str):
+def cp(runtime: EzRuntime, name: str, src: str, dest: str):
     """
 Copy local files to/from an environment.
 
@@ -52,7 +51,7 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
         printf_err("Missing dest parameter")
         exit(1)
 
-    compute_name = get_active_compute_name(runtime, compute_name)
+    name = get_active_compute_name(runtime, name)
     
     if src.startswith(":") and dest.startswith(":"):
         printf_err("Both src and dest cannot start with ':' "
@@ -77,34 +76,20 @@ foo.txt :/remote/path    Copy foo.txt to active environment /remote/path dir
     runtime.save()
 
 @click.command()
-@click.option("--compute-name", "-c", required=False,
-              help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=False,
-              help="Environment name to start")
+@click.option("--name", "-n", default="", help="Name of target compute")
+@click.option("--env-name", "-e", default="", 
+    help="Environment name to start")
 @click.pass_obj
-def ssh(runtime: EzRuntime, compute_name, env_name):
+def ssh(runtime: EzRuntime, name: str, env_name: str):
     """SSH to an environment"""
     ez = runtime.current()
-    if not ez.active_remote_compute:
-        if not compute_name:
-            printf_err("--compute-name parameter must be specified "
-                       "because there isn't an active compute environment.")
-            exit(1)
-    else:
-        compute_name = ez.active_remote_compute
+    name = get_active_compute_name(runtime, name)
+    env_name = get_active_env_name(runtime, env_name)
 
-    if not ez.active_remote_env:
-        if not env_name:
-            printf_err("--env-name parameter must be specified "
-                       "because there isn't an active environment.")    
-            exit(1)
-    else:
-        env_name = ez.active_remote_env
-
-    if compute_name != ".":
+    if name != ".":
         # Run docker ps on the remote VM to figure out what the container id
         # of the running VS Code container is
-        cmd = (f"ssh -i {ez.private_key_path} {ez.user_name}@{compute_name}."
+        cmd = (f"ssh -i {ez.private_key_path} {ez.user_name}@{name}."
             f"{ez.region}.cloudapp.azure.com docker ps --format "
             "{{.Image}},{{.ID}}")
     else:
@@ -120,37 +105,44 @@ def ssh(runtime: EzRuntime, compute_name, env_name):
         exit(1)
 
     image_name, container_id = vsc_containers[0].split(",")
-    if compute_name != ".":
+    if name != ".":
         # Open a tunneled SSH connection into the running remote container
         cmd = (f"ssh -tt -i {ez.private_key_path} "
-            f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com "
+            f"{ez.user_name}@{name}.{ez.region}.cloudapp.azure.com "
             f"docker exec -it -w /workspace {container_id} /bin/bash")
         printf(f"opened SSH connection to container {container_id} running "
             f"using image {image_name} on "
-            f"{compute_name}.{ez.region}.cloudapp.azure.com")
+            f"{name}.{ez.region}.cloudapp.azure.com")
     else:
         # Handle the local case
         cmd = f"docker exec -it -w /workspace {container_id} /bin/bash"
         printf(f"opened SSH connection to container {container_id} running "
                f"using image {image_name} on localhost")
     subprocess.run(cmd.split(' '))
+    ez.active_remote_compute = name 
+    ez.active_remote_env = env_name
     runtime.save()
 
 @click.command()
-@click.option("--compute-name", "-c", required=False,
-              help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=False,
-              help="Environment name to start")
+@click.option("--name", "-n", required=True, default="",
+    help="Compute name to migrate the environment to")
+@click.option("--env-name", "-e", default="",
+    help="Environment name to start")
+@click.option("--mount", default="none",
+    help="Mount {local|azure|none} drive to /data default none")
 @click.pass_obj
-def up(runtime: EzRuntime, compute_name, env_name):
+def up(runtime: EzRuntime, name: str, env_name: str, mount: str):
     """Migrate the current environment to a new compute node"""
+
+    ez = runtime.current()
+    name = get_active_compute_name(runtime, name)
+    env_name = get_active_env_name(runtime, env_name)
 
     # Let's assume that we are in a local environment for the purpose
     # of this. Later I will add heuristics to error out if this is not
     # the case.
 
     # Get the URI of the repo we are currently in
-    ez = runtime.current()
     result = exec_cmd("git config --get remote.origin.url")
     exit_on_error(result)
     git_remote_uri = result.stdout
@@ -159,11 +151,11 @@ def up(runtime: EzRuntime, compute_name, env_name):
         printf_err(f"Directory {getcwd()} is not in a git repo")
         exit(1)
 
-    printf(f"Migrating {git_remote_uri} to {compute_name}")
+    printf(f"Migrating {git_remote_uri} to {name}")
 
     # Start the remote VM
-    jit_activate_vm(runtime, compute_name)
-    ez.active_remote_compute = compute_name
+    jit_activate_vm(runtime, name)
+    ez.active_remote_compute = name
 
     # Check to see if there are uncommitted changes
     patch_file = None
@@ -178,17 +170,24 @@ def up(runtime: EzRuntime, compute_name, env_name):
         scp_cmd = (
             f"scp -i {ez.private_key_path} "
             f"~/tmp/changes.patch "
-            f"{ez.user_name}@{compute_name}.{ez.region}.cloudapp.azure.com:"
+            f"{ez.user_name}@{name}.{ez.region}.cloudapp.azure.com:"
             f"/home/{ez.user_name}/changes.patch"
         )
         result = exec_cmd(scp_cmd, 
-            description=f"Copying changes to {compute_name}")
+            description=f"Copying changes to {name}")
         exit_on_error(result)
         patch_file = "changes.patch"
 
     env_name = git_remote_uri.split("/")[-1]
-    __go(runtime, git_remote_uri, compute_name, env_name, mount_drive=True, 
-        patch_file=patch_file)
+
+    if mount == "azure" or mount == "local" or mount == "none":
+        __go(runtime, ez, git_remote_uri, name, env_name, mount=mount, 
+            patch_file=patch_file)
+    else:
+        printf_err("--mount must be azure|local|none")
+
+    ez.active_remote_compute = name 
+    ez.active_remote_env = env_name
     runtime.save()
     exit(0)
 
@@ -550,48 +549,47 @@ WORKDIR /home/{ez.user_name}
         ez.active_remote_compute_type = "vm"
 
 @click.command()
-@click.option("--git-uri", "-g", required=True, 
-              help="URI of git repo to load in the environment")
-@click.option("--compute-name", "-c", required=False,
-              help="Compute name to migrate the environment to")
-@click.option("--env-name", "-n", required=False,
-              help="Environment name to start")
-@click.option("--mount", default="azure",
-              help="Mount {local|azure|none} drive to /data default none")
+@click.option("--git-uri", "-g", required=True, prompt="URI of GitHub repo",
+    help="URI of git repo to load in the environment")
+@click.option("--name", "-n", default="",
+    help="Compute name to migrate the environment to")
+@click.option("--env-name", "-e", default="",
+    help="Environment name to start")
+@click.option("--mount", default="none",
+    help="Mount {local|azure|none} drive to /data default none")
 @click.option("--use-acr", is_flag=True, default=False,
-              help="Generate container using Azure Container Registry")
+    help="Generate container using Azure Container Registry")
 @click.option("--build", is_flag=True, default=False,
-              help="When used with --use-acr forces a build of the container")
+    help="When used with --use-acr forces a build of the container")
 @click.pass_obj
-def go(runtime: EzRuntime, git_uri, compute_name, env_name, mount: str, 
+def go(runtime: EzRuntime, git_uri: str, name: str, env_name: str, mount: str, 
     use_acr: bool, build: bool):
     """Create and run an environment"""
 
     # If compute name is "-" OR there is no active compute defined, prompt
     # the user to select (or create) a compute
     ez = runtime.current()
-    if compute_name == "-":
+    if name == "-":
         print("Select which VM to use from this list of VMs provisioned "
               f"in resource group {ez.resource_group}")
-        compute_name = pick_vm(ez.resource_group)
-    elif not compute_name:
+        name = pick_vm(ez.resource_group)
+    elif name == "":
         # Use the current compute_name or prompt if none defined
-        if not ez.active_remote_compute:
+        if ez.active_remote_compute == "":
             print("Select which VM to use from this list of VMs provisioned "
                 f"in resource group {ez.resource_group}")
-            compute_name = pick_vm(ez.resource_group)
+            name = pick_vm(ez.resource_group)
         else:
-            compute_name = ez.active_remote_compute
+            name = ez.active_remote_compute
     else:
-        printf(f"using {compute_name} to run {git_uri}", indent=2)
+        printf(f"using {name} to run {git_uri}", indent=2)
 
-    if env_name is None:
+    if env_name == "":
         env_name = git_uri.split("/")[-1]
         printf(f"using {env_name} (repo name) as the env name", indent=2)
 
     if mount == "azure" or mount == "local" or mount == "none":
-        __go(runtime, ez, git_uri, compute_name, env_name, use_acr, build, 
-            mount)
+        __go(runtime, ez, git_uri, name, env_name, use_acr, build, mount)
     else:
         printf_err("--mount must be azure|local|none")
     runtime.save()

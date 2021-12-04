@@ -9,27 +9,27 @@ from typing import Dict
 @dataclass
 class Ez:
     # Workspace
-    workspace_name: str=None
-    resource_group: str=None
-    registry_name: str=None
-    storage_account_name: str=None
-    file_share_name: str=None
-    subscription: str=None
-    region: str=None
-    private_key_path: str=None
-    user_name: str=None
+    workspace_name: str=""
+    resource_group: str=""
+    registry_name: str=""
+    storage_account_name: str=""
+    file_share_name: str=""
+    subscription: str=""
+    region: str=""
+    private_key_path: str=""
+    user_name: str=""
 
     # Remotes
-    active_remote_compute: str=None
-    active_remote_compute_type: str=None
-    active_remote_env: str=None
+    active_remote_compute: str=""
+    active_remote_compute_type: str=""
+    active_remote_env: str=""
 
     # Authentication state
     last_auth_check: datetime=None
 
 @dataclass
 class EzConfig:
-    current_workspace: str=None
+    current_workspace: str=""
     workspaces: Dict[str, Ez]=field(default_factory=dict)
 
 class EzRuntime:
