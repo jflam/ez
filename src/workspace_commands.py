@@ -302,7 +302,8 @@ def create_workspace() -> Ez:
 
         keypath = os.path.expanduser(f"~/.ssh/{choice}")
         keyfile = choice
-        cmd = f"ssh-keygen -m PEM -t rsa -b 4096 -f {keypath} -q -N"
+        # TODO: handle passphrases properly instead of specifying empty
+        cmd = f"ssh-keygen -m PEM -t rsa -b 4096 -f {keypath} -q -N ''"
         result = exec_cmd(cmd)
         exit_on_error(result)
     else:
