@@ -4,6 +4,13 @@
 # 1. Need to have WSL 2 + Ubuntu installed if running locally on Windows
 # 2. Need to have Docker Desktop installed with WSL 2 integration turned on
 
+# Detect docker
+if ! command -v docker &> /dev/null
+then 
+  echo "You need to install Docker first: https://docs.docker.com/get-docker/"
+  exit
+fi
+
 # Warm up by updating system
 sudo apt update && sudo apt upgrade -y
 
