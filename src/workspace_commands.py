@@ -345,7 +345,7 @@ def delete(runtime: EzRuntime):
 
 @click.command()
 @click.option("--name", "-n", required=True, 
-              help="Name of workspace to select")
+    prompt="Name of workspace to select", help="Name of workspace to select")
 @click.pass_obj
 def select(runtime: EzRuntime, name: str):
     """Select workspace"""
@@ -366,7 +366,6 @@ def ls(runtime: EzRuntime):
 def info(runtime: EzRuntime):
     """Show information about the ez workspace"""
 
-    # TODO: clean this up
     ez = runtime.current()
     subscription_name = get_subscription_name(ez.subscription)
     subscription_info = f"{subscription_name} ({ez.subscription})"
