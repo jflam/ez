@@ -187,6 +187,8 @@ def create_workspace() -> Ez:
 
         if registry_name != "":
             printf(f"Selected registry {registry_name} in {registry_region}")
+        else:
+            printf(f"No registry selected")
 
         # Discover storage account
         cmd = (f"az storage account list --resource-group "
@@ -217,39 +219,43 @@ def create_workspace() -> Ez:
             
             storage_account_name = df.iloc[choice][0]
 
-        if storage_account_name is not None:
+        if storage_account_name != "":
             printf(f"Selected storage account {storage_account_name}")
 
-        # Discover file share name
-        key = get_storage_account_key(storage_account_name, 
-            workspace_resource_group)
-        if key is None:
-            printf_err("Could not retrieve storage account key")
-            exit(1)
+            # Discover file share name
+            key = get_storage_account_key(storage_account_name, 
+                workspace_resource_group)
+            if key is None:
+                printf_err("Could not retrieve storage account key")
+                exit(1)
 
-        cmd = (f"az storage share list --account-name "
-            f"{storage_account_name} --account-key {key} -o tsv")
-        df = exec_cmd_return_dataframe(cmd)
-        count = df.shape[0]
+            cmd = (f"az storage share list --account-name "
+                f"{storage_account_name} --account-key {key} -o tsv")
+            df = exec_cmd_return_dataframe(cmd)
+            count = df.shape[0]
 
-        if count == 0:
-            file_share_name = ""
-        elif count == 1:
-            file_share_name = df.iloc[0][1]
+            if count == 0:
+                file_share_name = ""
+            elif count == 1:
+                file_share_name = df.iloc[0][1]
+            else:
+                for i, name in enumerate(df.iloc[:,2]):
+                    print(f"{i} {name}")
+
+                while True:
+                    choice = IntPrompt.ask("Enter storage account # to use", 
+                        default=-1)
+                    if choice >= 0 and choice < df.shape[0]:
+                        break
+                
+                file_share_name = df.iloc[choice][1]
         else:
-            for i, name in enumerate(df.iloc[:,2]):
-                print(f"{i} {name}")
-
-            while True:
-                choice = IntPrompt.ask("Enter storage account # to use", 
-                    default=-1)
-                if choice >= 0 and choice < df.shape[0]:
-                    break
-            
-            file_share_name = df.iloc[choice][1]
+            file_share_name = ""
         
-        if file_share_name is not None:
+        if file_share_name != "":
             printf(f"Selected file share {file_share_name}")
+        else:
+            printf(f"No file share selected")
 
     # Create a new workspace 
     print("\nStep 3/5: Create a new workspace\n")
