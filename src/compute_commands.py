@@ -111,7 +111,6 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
 
         # Ask machine to reboot (need to swallow exception here)
         uri = get_compute_uri(runtime, name)
-        print("6")
         exec_cmd("sudo reboot", uri=uri, 
             private_key_path=ez.private_key_path, 
             description=f"Rebooting {name}")
