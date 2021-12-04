@@ -357,7 +357,9 @@ def select(runtime: EzRuntime, name: str):
 @click.pass_obj
 def ls(runtime: EzRuntime):
     """List workspaces"""
-    pass
+    printf("Workspaces in ~/.ez.json:")
+    for key in runtime.config.workspaces.keys():
+        print(f"  {key}")
 
 @click.command()
 @click.pass_obj
