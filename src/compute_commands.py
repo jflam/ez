@@ -128,8 +128,8 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
         exit(1)
 
 @click.option("--name", "-n", required=True, default="",
-    prompt="Name of compute to update", help="Name of compute to update")
-@click.option("--compute-size", "-s", 
+    help="Name of compute to update")
+@click.option("--compute-size", "-s", required=True, 
     help="Size of Azure VM or '.' for local update")
 @click.command()
 @click.pass_obj
@@ -165,7 +165,7 @@ def __update_system(runtime: EzRuntime, compute_name: str,
     uri = get_compute_uri(runtime, compute_name)
     result = exec_file(provision_vm_script_path, uri=uri, 
         private_key_path=ez.private_key_path, description=description)
-    return result
+    return result[0]
 
 def __enable_acr(runtime: EzRuntime, 
     compute_name: str) -> Optional[ExecResult]:
