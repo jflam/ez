@@ -75,30 +75,63 @@ satisfy real-work workflows.
 
 ## Getting Started
 
+`ez` is still a prototype and very much a work in progress. It also has
+a large number of dependencies on other software that needs to be present
+on the system. Help would be welcome in building a more robust installation
+procedure!
 
-## Automated Installation and Configuration
+### Pre-requisites
 
-`ez` has been developed and tested in two environments: Mac OS and Ubuntu
-20.04 running under WSL 2 on Windows. It has not been tested on Windows yet.
-`ez` is a Python 3 application.
+Before you can install `ez`, you will need a working Docker installation on
+your computer. You can download [Docker from
+here](https://www.docker.com/products/docker-desktop). Note that Docker
+Desktop is not free software, so please read the licensing terms carefully.
 
-If you are running `ez` on Ubuntu in WSL 2, I've created a script to help
-setup the environment for you. I don't currently have a script for Mac OS. 
-This script should also work on Linux outside of WSL 2. I have tested this
-script by provisioning a VM on Azure using ez (which also installs Docker, 
-the only pre-requisite for installing ez on WSL 2 in Windows), running this
-script on that VM and creating another VM on Azure using that install of ez.
+If you are running Linux under WSL 2 on Windows, you must enable the [WSL 2 
+backend](https://docs.docker.com/desktop/windows/wsl/) for Docker.
 
-Before you can run this script, you will need to have [Docker
-Desktop](https://docs.microsoft.com/en-us/windows/wsl/tutorials/wsl-containers)
-installed with WSL 2 integrations enabled. You can learn more about installing
-[WSL 2 from the Windows Store from
-here](https://devblogs.microsoft.com/commandline/a-preview-of-wsl-in-the-microsoft-store-is-now-available/).
+On Mac, you will also need a working [Homebrew](https://brew.sh/)
+installation.
+
+### On Windows Support
+
+`ez` has not been tested running on Windows, and likely will not run at all in
+its current state. If you are running Windows, enable WSL 2 and install Linux
+and run `ez` from there. I realize that Windows support is important to many
+and it is fairly ironic that I, an alumni of the Windows team, have not spent
+any time working on Windows support for `ez`. Help would be welcome in
+building out the Windows support!
+
+To be clear, I use Windows probably 75% of the time in developing `ez`. It's
+just that I do all of my work on Ubuntu 20.04 running under WSL 2 on Windows.
+
+### Python 3.8+ required
+
+If you have a working Python >= 3.8 installation on Linux or Mac, you should
+use these scripts to install:
+
+- Mac
+- Linux
+
+If you don't have a working Python on Linux or Mac, these scripts will install
+Python for you in addition to installing `ez`:
+
+Linux:
 
 ```sh
 curl --remote-name https://raw.githubusercontent.com/jflam/ez/main/src/pre-install.sh 
-bash preinstall-ubuntu.sh
+bash pre-install.sh
 ```
+
+Mac:
+
+```sh
+curl --remote-name https://raw.githubusercontent.com/jflam/ez/main/src/pre-install-mac.sh 
+bash pre-install-mac.sh
+```
+
+Additional software in addition to `ez` that is installed by the script
+include:
 
 The script:
 
@@ -106,25 +139,24 @@ The script:
 1. Installs `Miniconda3`
 1. Generates two SSH keys: `id_rsa_azure` and `id_rsa_github` that will be
    used to connect to GitHub and connect to resources that you create with
-   Azure.
-1. Install the GitHub CLI
-1. Install the Azure CLI
+   Azure. You can choose to use an existing key when configuring `ez` later.
+1. Install the [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/)
+1. Install the [GitHub CLI](https://cli.github.com/)
 1. Logs into GitHub and Azure
 1. Installs `ez` by cloning this repo
 1. Initializes `ez`
 
-## Manual installation
+If you have both of these installed already, you may just want to clone the 
+`ez` GitHub repo and run this:
 
-If you are installing manually from this repo and you have everything setup.
-
-To setup the tool for running in development mode, you will first need to
-run from `src/`:
-
-```
-python setup.py develop
+```sh
+cd ez/src
+python setup.py install
 ```
 
-This will make it possible to continue to develop locally and have your 
-changes immediately reflected each time you run `ez` from any directory.
+If you want to modify the code, pass `develop` instead of `install` as a
+parameter to `setup.py`.  This will make it possible to continue to develop
+locally and have your changes immediately reflected each time you run `ez`
+from any directory.
 
 ## How It Works

@@ -1,35 +1,42 @@
-# bash script for setting up pre-requisites for installing Ez on Linux
+# bash script for setting up pre-requisites for installing Ez on Mac
 # This script has some pre-requisites of its own too:
 # 
-# 1. Need to have WSL 2 + Ubuntu installed if running locally on Windows
-# 2. Need to have Docker Desktop installed with WSL 2 integration turned on
+# 1. Need to have Docker installed on the Mac
+# 2. Need to have Homebrew installed
 
 # Detect docker
-if ! command -v docker &> /dev/null
+if ! command -v docker &> /dev/null 
 then 
   echo "You need to install Docker first: https://docs.docker.com/get-docker/"
   exit
 fi
 
+# Detect brew
+if ! command -v brew &> /dev/null 
+then
+  echo "You need to install Homebrew first: https://brew.sh/"
+  exit 
+fi
+
 # Warm up by updating system
-sudo apt update && sudo apt upgrade -y
+brew update && brew upgrade 
 
 # Install git, curl
 # sudo apt install git curl keychain -y
-sudo apt install git curl -y
+brew install git curl
 
 # Install Python via miniconda silently
 cd ~/ && mkdir ~/tmp 
 cd ~/tmp
-curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+curl https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh \
   --remote-name
-bash Miniconda3-latest-Linux-x86_64.sh -b
+bash Miniconda3-latest-MacOSX-x86_64.sh -b
 
-# Configure conda into current bash
-echo 'eval "$(~/miniconda3/bin/conda shell.bash hook)"' >> ~/.bashrc
+# Configure conda into current zsh
+echo 'eval "$(~/miniconda3/bin/conda shell.zsh hook)"' >> ~/.zshrc
 
 # Do the same thing but within this session
-eval "$(~/miniconda3/bin/conda shell.bash hook)"
+eval "$(~/miniconda3/bin/conda shell.zsh hook)"
 
 # Generate SSH keys for accessing Azure and GitHub
 # You will need to enter passphrases for these
@@ -49,15 +56,10 @@ Host *.cloudapp.azure.com
 EOF
 
 # Install GitHub CLI
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
- | sudo gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
- | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-sudo apt update
-sudo apt install gh
+brew install gh
 
 # Install the Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+brew install azure-cli
 
 # Log into GitHub
 gh auth login
