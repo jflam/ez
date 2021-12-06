@@ -302,8 +302,13 @@ Host github.com
 
     # Append github.com to the list of known hosts on the server
     result = exec_cmd("ssh-keyscan -H github.com >> ~/.ssh/known_hosts",
-        uri = get_compute_uri(runtime, compute_name), 
-        private_key_path=ez.private_key_path)
+        uri = uri, private_key_path=ez.private_key_path)
+    exit_on_error(result)
+
+    # Adjust permissions on config and known_hosts on the server
+    result = exec_cmd("chmod 644 ~/.ssh/config && "
+        "chmod 644 ~/.ssh/known_hosts",
+        uri = uri, private_key_path=ez.private_key_path)
     exit_on_error(result)
 
     if manual:
