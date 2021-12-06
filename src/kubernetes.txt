@@ -1,0 +1,246 @@
+# Holding place for all former k8s functions that will need to be 
+# re-written to work with current versions of ez
+
+# def run_k8s(runtime: EzRuntime, env_name, git_uri, jupyter_port, compute_name,
+#             user_interface, git_clone, token, has_gpu, force_generate):
+#     """DEPRECATED"""
+#     ez = runtime.current()
+#     printf_err("k8s support needs reimplementation")
+#     exit(1)
+
+#     # path_to_vscode_project = generate_vscode_project(runtime, getcwd(), git_uri, 
+#     #                                                  jupyter_port, token, 
+#     #                                                  ".", has_gpu, 
+#     #                                                  force_generate, True)
+
+#     # # ASSUME if path_to_vscode_project exists that image built alredy
+#     # if not path.exists(path_to_vscode_project):
+#     #     build_cmd = (f"jupyter-repo2docker --image-name jflam/{env_name} "
+#     #                 f"--no-run {path_to_vscode_project}")
+#     #     print(f"BUILD Docker image locally: {build_cmd}")
+#     #     result = exec_cmd(build_cmd)
+#     #     exit_on_error(result)
+#     #     docker_cmd = (f"docker push jflam/{env_name}")
+#     #     print(f"PUSH Docker image to Docker Hub: {docker_cmd}")
+#     #     result = exec_cmd(docker_cmd)
+#     #     exit_on_error(result)
+
+#     # launch_user_interface(runtime, user_interface, path_to_vscode_project, 
+#     #                       jupyter_port, token)
+
+#     # jupyter_variant = "notebook"
+#     # if user_interface == "lab":
+#     #     jupyter_variant = "lab"
+
+#     # kdo_cmd = (f"kdo -p {jupyter_port}:{jupyter_port} "
+#     #            "--spec '{\"resources\":{\"limits\":{\"nvidia.com/gpu\":\"1\"}}}' "
+#     #            f"jflam/{env_name} "
+#     #            f"nohup jupyter {jupyter_variant} --no-browser "
+#     #            f"--port {jupyter_port} --ip=0.0.0.0 "
+#     #            f"--NotebookApp.token={token} .")
+
+#     # # kdo blocks while syncing local filesystem into the pod
+#     # # CTRL+C will terminate.
+#     # print(f"START pod {kdo_cmd}")
+#     # print("TERMINATE using CTRL+C")
+#     # result = exec_cmd(kdo_cmd)
+#     # exit_on_error(result)
+
+# @click.command()
+# @click.option("--env-name", "-n", required=True, 
+#               help="Name of environment to start")
+# @click.option("--git-uri", "-g", required=True, 
+#               help="URI of git repo to load in the environment")
+# @click.option("--user-interface", "-u", default="code", 
+#               help="UI {notebook|lab|code} to use. Default is code")
+# @click.option("--compute-name", "-c", 
+#               help=("compute node to use (default is the "
+#               "current active compute node)"))
+# @click.option("--git-clone", is_flag=True, 
+#               help=("Force fresh clone of GitHub repo before "
+#               "starting environment"))
+# @click.option("--force-generate", is_flag=True, default=False,
+#               help="Force generation of the local VS Code project")
+# @click.pass_obj
+# def run(runtime: EzRuntime, env_name, git_uri, user_interface, compute_name, 
+#     git_clone, force_generate):
+#     """DEPRECATED"""
+#     ez = runtime.current()
+#     printf_err("deprecated: Use ez env go instead")
+#     exit(0)
+
+#     compute_name = get_active_compute_name(runtime, compute_name)
+
+#     # Initialize context
+#     ez.active_remote_compute = compute_name
+#     ez.active_remote_env = env_name
+#     ez.local_repo_name = path.basename(git_uri)
+
+#     jupyter_port = random.randint(1024, 8192)
+#     token = uuid.uuid4().hex 
+
+#     compute_size = get_compute_size(runtime, compute_name)
+#     has_gpu = is_gpu(compute_size)
+
+#     if ez.active_remote_compute_type == 'vm':
+#         run_vm(runtime, env_name, git_uri, jupyter_port, compute_name,
+#                user_interface, git_clone, token, has_gpu, force_generate)
+#     elif ez.active_remote_compute_type == 'k8s':
+#         run_k8s(runtime, env_name, git_uri, jupyter_port, compute_name,
+#                 user_interface, git_clone, token, has_gpu, force_generate)
+#     else:
+#         print(f"Unknown active_remote_compute_type in ~/.ez.conf: "
+#             f"{ez.active_remote_compute_type}")
+#         exit(1)
+#     exit(0)
+
+# # TODO: remove this method
+# def generate_vscode_project(runtime: EzRuntime, dir, git_uri, jupyter_port, 
+#     token, vm_name, has_gpu, force_generate=False, is_k8s = False) -> str:
+#     """Generate a surrogate VS Code project at dir. Returns path to the 
+#     generated VS Code project."""
+#     ez = runtime.current()
+#     is_local = True if vm_name == "." else False
+
+#     repo_name = path.basename(git_uri)
+#     if not is_local:
+#         local_dirname = f"{repo_name}_remote"
+#     else:
+#         local_dirname = repo_name
+
+#     path_to_vsc_project = f"{dir}/{local_dirname}"
+#     if path.exists(path_to_vsc_project) and force_generate:
+#         runtime.debug_print(f"REMOVING existing directory: {path_to_vsc_project}")
+#         rmtree(path_to_vsc_project)
+
+#     print(f"CREATE surrogate VS Code project in {path_to_vsc_project}")
+
+#     # For local projects only, git clone into path_to_vsc_project
+#     if is_local:
+#         if not path.exists(path_to_vsc_project):
+#             print(f"CLONING {git_uri} into {path_to_vsc_project}...")
+#             result = exec_cmd(f"git clone {git_uri} {repo_name}")
+#             exit_on_error(result)
+#         else:
+#             print(
+#                 f"SKIPPING git clone of {git_uri} as there is already a "
+#                 f"{path_to_vsc_project} directory")
+
+#     # Do not generate .devcontainer for k8s
+#     if not is_k8s:
+#         if not path.exists(f"{path_to_vsc_project}/.devcontainer"):
+#             makedirs(f"{path_to_vsc_project}/.devcontainer")
+
+#     if not path.exists(f"{path_to_vsc_project}/.vscode"):
+#         makedirs(f"{path_to_vsc_project}/.vscode")
+
+#     if not is_k8s:
+#         devcontainer_path = (
+#             f"{path_to_vsc_project}/.devcontainer/devcontainer.json")
+#         devcontainer_json = generate_devcontainer_json(
+#             ez, jupyter_port, token, is_local, has_gpu
+#         )
+#         print(f"GENERATE devcontainer.json: {devcontainer_path}")
+#         with open(devcontainer_path, 'w') as file:
+#             file.write(devcontainer_json)
+
+#     settings_json_path = f"{path_to_vsc_project}/.vscode/settings.json"
+#     settings_json = generate_settings_json(runtime, is_local, jupyter_port, 
+#         token)
+
+#     print(f"GENERATE settings.json: {settings_json_path}")
+#     with open(settings_json_path, "w") as file:
+#         file.write(settings_json)
+
+#     if not is_local:
+#         remote_settings_json_path = (
+#             f"{path_to_vsc_project}/.vscode/remote_settings.json")
+#         remote_settings_json = generate_remote_settings_json(runtime, 
+#                                                              jupyter_port, 
+#                                                              token)
+
+#         print(f"GENERATE remote_settings.json: {remote_settings_json_path}")
+#         with open(remote_settings_json_path, "w") as file:
+#             file.write(remote_settings_json)
+
+#         write_settings_json_cmd = (
+#             f'cat > /tmp/settings.json; mkdir -p /home/{ez.user_name}/'
+#             f'easy/env/{ez.active_remote_env}/repo/.vscode; '
+#             f'mv /tmp/settings.json /home/{ez.user_name}/'
+#             f'easy/env/{ez.active_remote_env}/repo/.vscode/settings.json'
+#         )
+#         # TODO: this isn't supported in exec_file today where we pipe in 
+#         # the contents of remote_settings_json_path into the ssh command
+#         # in write_settings_json_cmd on the remote machine
+#         # This doesn't matter because this method will be deprecated too
+#         # result = exec_file(remote_settings_json_path, 
+#         #     get_compute_uri(vm_name), private_key_path=)
+#         # exec_script_using_ssh(runtime, remote_settings_json_path, 
+#         #                       vm_name, 
+#         #                       write_settings_json_cmd)
+    
+#     return path_to_vsc_project
+
+# def get_compute_size(runtime: EzRuntime, compute_name) -> str:
+#     """Return the compute size of compute_name"""
+#     # Special return value for localhost
+#     ez = runtime.current()
+#     if compute_name == '.':
+#         return '.'
+
+#     if ez.active_remote_compute_type == "k8s":
+#         # TODO: handle case where compute_type is AKS
+#         # For now, it always returns a GPU-enabled SKU
+#         return "Standard_NC6_Promo"
+#     elif ez.active_remote_compute_type == "vm":
+#         runtime.debug_print(format_output_string(
+#             f"get compute size for {compute_name}"))
+#         get_compute_size_cmd = (
+#             f"az vm show --name {compute_name} "
+#             f"--resource-group {ez.resource_group} "
+#             f"--query hardwareProfile.vmSize -o tsv"
+#         )
+#         result = exec_cmd(get_compute_size_cmd)
+#         exit_on_error(result)
+#         compute_size = result.stdout
+#         runtime.debug_print(format_output_string(f"result: {compute_size}"))
+#         return compute_size
+#     else:
+#         printf_err("Unknown active_remote_compute_type in ~/.ez.conf "
+#                    f"detected: {ez.active_remote_compute_type}")
+#         exit(1)
+
+# def generate_settings_json(runtime: EzRuntime, is_local, jupyter_port_number, 
+#     token):
+#     """Generate an appropriate settings.json file"""
+#     ez = runtime.current()
+#     if not is_local:
+#         settings_json = (
+#             f'{{\n'
+#             f'    "docker.host": '
+#             f'"ssh://{ez.user_name}@{ez.active_remote_compute}.'
+#             f'{ez.region}.cloudapp.azure.com",\n'
+#             f'}}\n'
+#         )
+#     else:
+#         settings_json = (
+#             f'{{\n'
+#             f'    "python.dataScience.jupyterServerURI": "http://localhost:'
+#             f'{jupyter_port_number}/?token={token}",\n'
+#             # TODO: conditional for non native notebooks?
+#             f'    "jupyter.jupyterServerType": "remote",\n'
+#             f'}}\n'
+#         )
+
+#     return settings_json
+
+# def generate_remote_settings_json(runtime: EzRuntime, jupyter_port_number, 
+#     token):
+#     """Generate remote_settings.json file"""
+#     remote_settings_json = (
+#         f'{{\n'
+#         f'    "python.dataScience.jupyterServerURI": '
+#         f'"http://localhost:{jupyter_port_number}/?token={token}"\n'
+#         f'}}\n'
+#     )
+#     return remote_settings_json
