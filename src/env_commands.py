@@ -287,6 +287,7 @@ RUN conda install -y mamba -n base -c conda-forge && \\
         dockerfile = f"""
 FROM {ez_json["base_container_image"]}
 
+USER root
 RUN apt update \\
     && apt upgrade -y \\
     && apt install -y curl build-essential git vim
@@ -333,7 +334,11 @@ WORKDIR /home/{ez.user_name}
         # In the remote case, it needs to conditionally clone the git repo
         # onto the remote VM. If the repo was already cloned on the VM, then
         # we need to cd into the dir and git pull that repo. Otherwise just do
-        # the clone.
+        # the clone. We ignore the return codes here as the commands will
+        # pass through the result of the conditional test which isn't 
+        # actually indicating an error, just whether the conditional was
+        # successful or not (and given the logic one of them MUST be 
+        # unsuccessful).
         description = (f"clone/update {git_uri} on {compute_name} "
                        f"at {remote_env_path}")
         remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "

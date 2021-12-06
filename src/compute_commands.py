@@ -21,7 +21,7 @@ from typing import Optional
 @click.option("--name", "-n", required=True, default="",
     prompt="Name of compute to create",
     help="Name of compute to create")
-@click.option("--compute-size", "-s", 
+@click.option("--compute-size", "-s", default="-",
     help="Size of Azure VM or '.' for local creation")
 @click.option("--compute-type", "-t", default="vm",
     help=("Type of compute: vm (virtual machine) or "
@@ -37,13 +37,13 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
 
     ez = runtime.current()
 
-    # User can pass in nothing for --compute-size and we will helpfully list
+    # User can pass - for --compute-size and we will helpfully list
     # all available vm sizes in the workspace region
     
-    if compute_size == None:
+    if compute_size == "-":
         print(f"Missing VM size. VM sizes available in {ez.region}:")
         cmd = (f"az vm list-sizes --subscription {ez.subscription} "
-               f"--location {ez.region} --output table")
+               f"--location {ez.region} --output tsv")
         result = exec_cmd(cmd)
         exit_on_error(result)
         print(result.stdout)
@@ -468,8 +468,7 @@ def start(runtime: EzRuntime, name: str):
     exit(0)
 
 @click.command()
-@click.option("--name", "-n", prompt="Name of compute to stop",
-    help="Name of compute to stop")
+@click.option("--name", "-n", default="", help="Name of compute to stop")
 @click.pass_obj
 def stop(runtime: EzRuntime, name: str):
     """Stop a virtual machine"""
