@@ -459,6 +459,9 @@ WORKDIR /home/{ez.user_name}
         vm_size = get_vm_size(runtime, compute_name)
         compute_has_gpu = is_gpu(vm_size)
 
+    if "run_args" in ez_json:
+        runargs = ",".join(ez_json["run_args"])
+
     if requires_gpu and not compute_has_gpu:
         printf(f"Warning: repo requires a GPU and {compute_name} "
             "does not have one", indent=2)
@@ -467,19 +470,30 @@ WORKDIR /home/{ez.user_name}
         # perhaps this means that we must let the user specify and default
         # to a reasonable value? What is clear is that --ipc=host is not a 
         # good idea as that requires the container to be run as root!
-        runargs = """
-        "--gpus=all",
-        "--shm-size=1g",
-""".strip()
+
+        # TODO: If ez.json has a run_args parameter, use it
+        if "run_args" in ez_json:
+            runargs = ",".join(f"\"{x}\"" for x in ez_json["run_args"])
+        else:
+            runargs = """
+            "--gpus=all",
+            "--shm-size=1g",
+    """.strip()
     else:
-        runargs = ""
+        if "run_args" in ez_json:
+            runargs = ",".join(f"\"{x}\"" for x in ez_json["run_args"])
+        else:
+            runargs = ""
 
     if compute_name == ".":
         # container_user = getpass.getuser()
         container_user = ez.user_name
         ssh_dir = os.path.expanduser("~/.ssh")
     else:
+        # If there is a container_user parameter in ez.json, use it
         container_user = ez.user_name
+        if "container_user" in ez_json:
+            container_user = ez_json["container_user"]
         ssh_dir = f"/home/{ez.user_name}/.ssh"
     
     ssh_target = f"/home/{container_user}/.ssh"
