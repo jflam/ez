@@ -160,3 +160,91 @@ locally and have your changes immediately reflected each time you run `ez`
 from any directory.
 
 ## How It Works
+
+`ez` is a command-line tool written in Python >= 3.8. It has a several key
+dependencies:
+
+- Docker: you will need a working Docker installation. On Mac and Windows,
+  this is typically [Docker Desktop]()
+- Azure CLI: the only supported cloud provider in `ez` is Azure today, and you
+  will need to have a working and logged in Azure CLI for `ez` to work with
+  Azure resources. 
+- GitHub CLI: `ez` assumes GitHub today as the source of any git repos that 
+  you want to run in an `ez` environment. 
+
+## Help wanted
+
+There are lots of things that I need help with in `ez`. In lieu of future 
+GitHub issues, I'm going to capture broad areas where contributions are 
+welcome.
+
+- Feedback on the command structure: do the core concepts of workspace,
+  compute, and environment match your mental model of how you would like to
+  work? Please open issues to start discussions on areas of concern (or to
+  lend support to the current model - this is important to know whether I'm
+  on the right track or not!)
+- Virtual private network support for Azure File Shares. Today, most ISPs
+  block SMB traffic over the public Internet. I would love enable users to
+  work locally and mount an Azure File Share locally so that files outside the
+  GitHub repo can be shared across different computes. This is really
+  important for the local-to-cloud migration scenario that I see lots of
+  people being interested in. This is at the heart of the _portable
+  environment_ feature in `ez`.
+- Fix the currently insecure method of storing Docker credentials on VMs.
+- Commands currently print a lot of diagnostic information when they run. It 
+  would be great to have a command logging system for verbose messages and
+  a simplified / more visually appealing status while commands are running.
+  Today, I use the `rich` library for rich text formatting (including the
+  nested timers which I do like).
+- A command for creating a new `ez`-enabled GitHub repo and a command for
+  adding `ez` support to an existing GitHub repo. Ideally the command would
+  ask the owner of the GitHub repo some questions about dependencies in the
+  repo, e.g., "needs a GPU" or "uses Ubuntu as a base image", or "needs Python
+  3.9 or higher". To make `ez` more appealing to less experienced users it
+  would be great to have less technical descriptions in the questions. Perhaps
+  even "groups" of commonly used packages, e.g., "scipy users" vs. "pytorch
+  users".
+- Giving users a better option than specifying the exact Azure VM size when
+  creating a compute. I would imagine users would like to see a menu of things
+  that they can create, e.g., I want X cores or Y GB of RAM, or I need a V100
+  GPU with at least 16GB of VRAM etc.
+- Enabling an option for powering down unused machines based on policy. Azure
+  supports policy-based shutdown already, and it would be great to have 
+  support baked into the tool.
+- Support configuring the user's machine for SSH private key passphrases. I 
+  use a specific tool on my Linux WSL 2 environments that asks me for my
+  passphrase on boot and caches it for the duration of that OS session. It 
+  would be great to auto-configure that for the keys that `ez` manages.
+- Enabling support for Azure JIT-activation of SSH ports on VMs. There is some
+  commented out code that used to work, but the programmatic JIT activation
+  API is not stable and broke. It would be great to get that re-enabled.
+- Enable optional support for `mosh` SSH sessions for a better interactive 
+  experience working with remote VMs. This will also require JIT activation
+  work on Azure to enable the UDP ports used by `mosh` for its low-latency
+  interactive packets.
+- Improve the installation experience for `ez` by making the pre-install 
+  scripts more robust against failure on real users' machines.
+- Investigate better packaging options for deploying `ez` so that it brings
+  its own Python rather than relying on a system-provided Python to run. I'm
+  not against porting `ez` to another language, e.g., `golang` as well.
+- Investigate building an `ez service`. I'm not happy with having things
+  running on the user's local machine, as it makes diagnosing issues much more
+  difficult. Much like how Azure has its cloud shell it would be great to see
+  if we could build an `ez service` where the user can have a lightweight
+  install, and all of the real work can be managed and updated in a
+  centralized service.
+- Improve the performance of remote container configuration in VS Code. This
+  is likely a collaboration with the VS Code team. Today I can run a local
+  container in under 10s, but it takes over 60s to do the same thing on a 
+  remote machine. There are clearly optimizations that can make this faster
+  in the future.
+- Explicit support for running local containers on M1 Mac computers. This 
+  really doesn't work today and I haven't had time to investigate what it 
+  would take to get this working. Can we create native ARM64 container
+  images? What would it take to build a toolchain that can make that work
+  on M1 Macs? Can we get things to work by just running x64 code using
+  Rosetta? What are the implications of that (e.g., performance, access to
+  the M1 GPU/NPU hardware)?
+- Running `ez` on Windows. I don't think it's a good idea to run user
+  workloads on Windows containers, but enabling the CLI to run on Windows
+  would likely require some work.
