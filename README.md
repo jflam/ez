@@ -211,6 +211,8 @@ welcome.
 - Enabling an option for powering down unused machines based on policy. Azure
   supports policy-based shutdown already, and it would be great to have 
   support baked into the tool.
+- Improving the performance of `ez compute ls` by asynchronously fetching the
+  power on state of the VMs after displaying the raw names of the VMs
 - Support configuring the user's machine for SSH private key passphrases. I 
   use a specific tool on my Linux WSL 2 environments that asks me for my
   passphrase on boot and caches it for the duration of that OS session. It 
