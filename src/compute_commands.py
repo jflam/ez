@@ -28,11 +28,14 @@ from typing import Optional
     "k8s (Kubernetes)"))
 @click.option("--image", "-i", default="UbuntuLTS", 
     help="Image to use to create the VM (default UbuntuLTS)")
+@click.option("--force", "-f", is_flag=True, default=False,
+    help=("Ignore DNS hostname check and create VM anyways (to workaround "
+    "DNS caching issues for recycled names)"))
 @click.option("--no-install", "-q", is_flag=True, default=False,
     help=("Do not install system software"))
 @click.pass_obj
 def create(runtime: EzRuntime, name: str, compute_size: str, 
-    compute_type: str, image: str, no_install: bool):
+    compute_type: str, image: str, force:bool, no_install: bool):
     """Create a compute node"""
 
     ez = runtime.current()
@@ -51,12 +54,13 @@ def create(runtime: EzRuntime, name: str, compute_size: str,
 
     # Use the host command to see if there is a DNS record for name already
     # in this region.
-    cmd = f"host {name}.{ez.region}.cloudapp.azure.com"
-    result = exec_cmd(cmd)
-    if "has address" in result.stdout:
-        printf_err(f"There is already a host {name}.{ez.region}"
-            ".cloudapp.azure.com. Try a different name.")
-        exit(1)
+    if not force:
+        cmd = f"host {name}.{ez.region}.cloudapp.azure.com"
+        result = exec_cmd(cmd)
+        if "has address" in result.stdout:
+            printf_err(f"There is already a host {name}.{ez.region}"
+                ".cloudapp.azure.com. Try a different name.")
+            exit(1)
 
     # Select provisioning scripts for the VM based on whether compute_size is
     # a GPU
