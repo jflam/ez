@@ -5,6 +5,7 @@ import constants as C
 import json
 import os
 import pandas as pd
+import shlex
 
 from azutil import (copy_to_clipboard, enable_jit_access_on_vm, is_gpu, 
     jit_activate_vm, get_vm_size, get_active_compute_name, 
@@ -598,3 +599,51 @@ def get_host_key(runtime: EzRuntime, name: str):
     key = get_host_ecdsa_key(runtime, name)
     runtime.save()
     print(key)
+
+@click.option("--name", "-n", required=True, default="",
+    help="Name of compute to enable JIT activation on")
+@click.command()
+@click.pass_obj
+def enable_jit_activation(runtime: EzRuntime, name: str):
+    """Enable JIT activation on VM"""
+    ez = runtime.current()
+    name = get_active_compute_name(runtime, name)
+
+    endpoint = (
+        f"https://management.azure.com/subscriptions/{ez.subscription}/"
+        f"resourceGroups/{ez.resource_group}/providers/"
+        f"Microsoft.Security/locations/{ez.region}/"
+        f"jitNetworkAccessPolicies/default/initiate?api-version=2020-01-01"
+    )
+    
+    body = {
+        "virtualMachines": [
+            {
+                "id": (
+                    f"/subscriptions/{ez.subscription}"
+                    f"/resourceGroups/{ez.resource_group}"
+                    f"/providers/Microsoft.Compute"
+                    f"/virtualMachines/{name}"
+                ),
+                "ports": [
+                    {
+                        "number": 22,
+                        "duration": "PT3H",
+                        "allowedSourceAddressPrefix": "*",
+                    }
+                ]
+            }
+        ],
+        "justification": "ez request for JIT",
+    }
+
+    body_json = shlex.quote(json.dumps(body))
+    
+    # Make the REST API call using the az rest cli command
+    cmd = f"az rest --method post --uri {endpoint} --body {body_json}"
+    runtime.debug_print(f"JIT ACTIVATE command: {cmd}")
+    result = exec_cmd(cmd, 
+        description=f"Requesting JIT activation for {name}")
+    exit_on_error(result)
+    printf(result.stdout)
+    exit(0)

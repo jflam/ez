@@ -178,6 +178,7 @@ compute.add_command(compute_commands.enable_acr)
 compute.add_command(compute_commands.enable_github)
 compute.add_command(compute_commands.mount)
 compute.add_command(compute_commands.get_host_key)
+compute.add_command(compute_commands.enable_jit_activation)
 
 # environment sub-commands
 
