@@ -124,6 +124,8 @@ def create_workspace() -> Ez:
             result = exec_cmd(cmd, description=f"Creating Premium Azure "
                 f"Container Registry {registry_name}")
             exit_on_error(result)
+        else:
+            registry_name = ""
 
         # Ask to create an Azure Storage Account
         choice = Prompt.ask("Name of Azure Storage Account to create? (blank "
