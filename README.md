@@ -35,7 +35,7 @@ needing to have a devops engineer set everything up for you!
 computer or on Azure. This is the every-day command that you'll use in `ez`:
 
 ```sh
-$ ez env go git@github.com:/jflam/fastai -c computer_name
+$ ez env go -g git@github.com:/jflam/fastai -n computer_name
 ```
 
 There are two parameters to `ez env go`:
