@@ -271,7 +271,12 @@ def launch_vscode(runtime: EzRuntime, dir):
     # runtime.debug_print(f"PATH: {wsl_path}")
 
     ez = runtime.current()
-    vscode_cmd = "code-insiders" if runtime.insiders else "code"
+
+    # TODO: Switching to use devcontainer open to launch VS Code, and I need
+    # to figure out what the insiders version of devcontainer open is
+    vscode_cmd = ("devcontainer open" if runtime.insiders 
+        else "devcontainer open")
+
     # TODO: figure out a way to determine when Jupyter is started in the pod
     # because VS Code doesn't do a good job at retrying connection
     # TODO: this isn't working on remote containers right now

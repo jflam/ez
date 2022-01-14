@@ -67,6 +67,11 @@ def check_dependencies(force: bool=False) -> bool:
         printf_err("Not logged into Github.com using the GitHub CLI. "
                    "Log in using: gh auth login")
         return False
+    if not check_installed("devcontainer",
+        ("Cannot find devcontainer CLI which is used to launch VS Code. "
+         "Open VS Code and run the Remote-Containers: Install DevContainer "
+         "CLI command"), force):
+        return False
     return True
 
 @click.group()

@@ -596,13 +596,8 @@ def mount_data_drive(runtime: EzRuntime, ez: Ez, compute_name: str,
 def run_vscode(runtime: EzRuntime, ez: Ez, compute_name: str, 
     env_name: str, local_env_path: str):
 
-    # Launch the project by launching VS Code using "code .". In the future
-    # this command will be replaced with "devcontainer open ." but because of
-    # the remote bug in devcontainer, we will avoid doing this for now and
-    # manually reopen the VS Code project.
-    printf(f"Launching VS Code ... you will need to reload in "
-           f"remote container by clicking the Reopen in Container button in "
-           f"the notification box in the bottom right corner.", indent=2)
+    # Launch the project by launching VS Code using "devcontainer open .". 
+    printf(f"Launching VS Code...", indent=2)
     launch_vscode(runtime, local_env_path)
 
     # Update ez state
