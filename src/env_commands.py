@@ -8,6 +8,7 @@ from azutil import (get_active_env_name, get_vm_size, launch_vscode,
 from exec import exec_cmd, exit_on_error
 from ez_state import Ez, EzRuntime
 from formatting import printf, printf_err
+from typing import Any
 from os import getcwd, path
 
 @click.command()
@@ -191,14 +192,10 @@ def up(runtime: EzRuntime, name: str, env_name: str, mount: str):
     runtime.save()
     exit(0)
 
-def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: str, 
-    use_acr: bool=False, build: bool=False, mount: str="none",
-    patch_file: str=None):
+def clone_git_repo(git_uri: str, env_name: str) -> str:
+    """Clone git repo to env_name returning the path to the repo"""
     # env_name will be used for local name of repository and is the path
     # on a remote machine as well
-
-    # If the local path exists already, then we don't clone unless the
-    # --force-clone switch is specified.
 
     # Clone the repository locally to a subdirectory of the directory where
     # the command is run from.
@@ -213,7 +210,18 @@ def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: 
         result = exec_cmd(git_cmd, description=f"cloning {git_uri} into "
             f"{local_env_path}")
         exit_on_error(result)
+    
+    return local_env_path
 
+def read_repo_config(local_env_path: str) -> Any:
+    """Read the repo's ez.json configuration file
+
+    Args:
+        local_env_path (str): Path to the repo
+
+    Returns:
+        Any: dictionary containing parsed repo configuration
+    """
     # Read the ez.json configuration file at the root of the repository. This
     # needs to be read per project and contains some additional information:
     # - requires_gpu: True/False 
@@ -227,9 +235,11 @@ def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: 
               "me to generate one for you? (TODO)")
         # TODO: generate
         exit(1)
+    
+    return ez_json
 
+def generate_dockerfile(ez: Ez, local_env_path: str, ez_json: Any):
     devcontainer_dir = f"{local_env_path}/.devcontainer"
-    devcontainer_json_path = f"{devcontainer_dir}/devcontainer.json"
     if not os.path.exists(devcontainer_dir):
         os.mkdir(devcontainer_dir)
 
@@ -248,7 +258,6 @@ def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, env_name: 
     # clone the project locally as well.
 
     # Copy files from the /build directory into the .devcontainer directory
-    # printf("Copying /build files to /.devcontainer")
     build_files = glob.glob(f"{local_env_path}/build/*")
     for file in build_files:
         if os.path.isfile(file):
@@ -299,10 +308,22 @@ WORKDIR /home/{ez.user_name}
 {pip_install}
 {conda_install}
     """
-        # printf("Generating default .devcontainer/Dockerfile")
         dockerfile_path = f"{devcontainer_dir}/Dockerfile"
         with open(dockerfile_path, "w", encoding="utf-8") as f:
             f.write(dockerfile)
+
+def build_container(ez: Ez, local_env_path: str, env_name: str, 
+    compute_name: str, use_acr: bool):
+    """Build container only if using ACR or running locally in WSL2
+
+    Args:
+        ez (Ez): [description]
+        local_env_path (str): [description]
+        env_name (str): [description]
+        use_acr (bool): [description]
+    """
+
+    devcontainer_dir = f"{local_env_path}/.devcontainer"
 
     # Build the image using an ACR task if the --use-acr flag was set
     if use_acr:
@@ -322,47 +343,60 @@ WORKDIR /home/{ez.user_name}
                 description="Building container image using ACR Tasks", 
                 cwd=devcontainer_dir)
             exit_on_error(result)
+    
+    # TODO: implement local docker build and generation of a WSL2 .vhdx
+    # check compute_name as parameter
 
+def clone_remote_repo(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, 
+    env_name: str, patch_file: str):
+
+    # Check to see if the remote compute has the GPU capability if needed
+    # and fail if it doesn't.
+
+    # TODO: Start the remote compute if necessary. Wait for it to complete
+    # starting
+    remote_env_path = f"/home/{ez.user_name}/code/{env_name}"
+
+    # TODO: I don't like the design of the multiple commands - there
+    # should be just a single command that conditionally runs expressions
+    # on the remote machine. Keeping this for now in this mechanical
+    # refactoring
+
+    # In the remote case, it needs to conditionally clone the git repo
+    # onto the remote VM. If the repo was already cloned on the VM, then
+    # we need to cd into the dir and git pull that repo. Otherwise just do
+    # the clone. We ignore the return codes here as the commands will
+    # pass through the result of the conditional test which isn't 
+    # actually indicating an error, just whether the conditional was
+    # successful or not (and given the logic one of them MUST be 
+    # unsuccessful).
+    description = (f"clone/update {git_uri} on {compute_name} "
+                    f"at {remote_env_path}")
+    remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "
+                        f"cd {remote_env_path} && git pull")
+    result = exec_cmd(remote_pull_cmd, 
+        uri=get_compute_uri(runtime, compute_name),
+        private_key_path=ez.private_key_path,
+        description=description)
+
+    remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
+                        f"git clone {git_uri} {remote_env_path}")
+    result = exec_cmd(remote_clone_cmd, 
+        uri=get_compute_uri(runtime, compute_name),
+        private_key_path=ez.private_key_path,
+        description=description)
+
+    # If a patch_file parameter is passed, then we need to apply the git
+    # patch file that was copied onto the server. 
+    if patch_file is not None:
+        cmd = (f"pushd {remote_env_path} && git apply "
+            f"/home/{ez.user_name}/{patch_file} && popd")
+        result = exec_cmd(cmd, uri=get_compute_uri(runtime, compute_name), 
+            private_key_path=ez.private_key_path, 
+            description=f"Applying patch file: {patch_file}")
+
+def write_settings_json(ez: Ez, compute_name: str, local_env_path: str):
     if compute_name != ".":
-        # Check to see if the remote compute has the GPU capability if needed
-        # and fail if it doesn't.
-
-        # TODO: Start the remote compute if necessary. Wait for it to complete
-        # starting
-        remote_env_path = f"/home/{ez.user_name}/code/{env_name}"
-
-        # In the remote case, it needs to conditionally clone the git repo
-        # onto the remote VM. If the repo was already cloned on the VM, then
-        # we need to cd into the dir and git pull that repo. Otherwise just do
-        # the clone. We ignore the return codes here as the commands will
-        # pass through the result of the conditional test which isn't 
-        # actually indicating an error, just whether the conditional was
-        # successful or not (and given the logic one of them MUST be 
-        # unsuccessful).
-        description = (f"clone/update {git_uri} on {compute_name} "
-                       f"at {remote_env_path}")
-        remote_pull_cmd = (f"[ -d '{remote_env_path}' ] && "
-                           f"cd {remote_env_path} && git pull")
-        result = exec_cmd(remote_pull_cmd, 
-            uri=get_compute_uri(runtime, compute_name),
-            private_key_path=ez.private_key_path,
-            description=description)
-
-        remote_clone_cmd = (f"[ ! -d '{remote_env_path}' ] && "
-                            f"git clone {git_uri} {remote_env_path}")
-        result = exec_cmd(remote_clone_cmd, 
-            uri=get_compute_uri(runtime, compute_name),
-            private_key_path=ez.private_key_path,
-            description=description)
-
-        # Apply the patch file if it exists on the server
-        if patch_file is not None:
-            cmd = (f"pushd {remote_env_path} && git apply "
-                f"/home/{ez.user_name}/{patch_file} && popd")
-            result = exec_cmd(cmd, uri=get_compute_uri(runtime, compute_name), 
-                private_key_path=ez.private_key_path, 
-                description=f"Applying patch file: {patch_file}")
-
         # The .vscode directory contains a dynamically generated settings.json
         # file which points to the VM that the remote container will run on.
 
@@ -376,10 +410,10 @@ WORKDIR /home/{ez.user_name}
         ssh_connection = (f"{ez.user_name}@{compute_name}.{ez.region}"
             ".cloudapp.azure.com")
         settings_json = f"""
-{{
+    {{
     "docker.host": "ssh://{ssh_connection}",
-}}
-"""
+    }}
+    """
         vscode_dir = f"{local_env_path}/.vscode"
         settings_json_path = f"{vscode_dir}/settings.json"
         if not os.path.exists(vscode_dir):
@@ -396,6 +430,10 @@ WORKDIR /home/{ez.user_name}
         if os.path.exists(vscode_dir):
             if os.path.exists(f"{vscode_dir}/settings.json"):
                 os.remove(f"{vscode_dir}/settings.json")
+
+def write_devcontainer_json(runtime: EzRuntime, ez: Ez, compute_name: str, 
+    env_name: str, local_env_path: str, ez_json: Any, use_acr: bool, 
+    mount: str):
 
     # Generate the devcontainer.json file. Much of this will eventually be
     # parameterized
@@ -416,7 +454,7 @@ WORKDIR /home/{ez.user_name}
     # Those files could all be run from the /build directory as well with
     # a hand-written Dockerfile
 
-    # printf("Generating .devcontainer/devcontainer.json")
+    remote_env_path = f"/home/{ez.user_name}/code/{env_name}"
     if compute_name == ".":
         mount_path = local_env_path
     else:
@@ -484,6 +522,7 @@ WORKDIR /home/{ez.user_name}
             runargs = ""
 
     if compute_name == ".":
+        # TODO: should this be interactive user?
         # container_user = getpass.getuser()
         container_user = ez.user_name
         ssh_dir = os.path.expanduser("~/.ssh")
@@ -539,8 +578,12 @@ WORKDIR /home/{ez.user_name}
     ],
 }}
 """
+    devcontainer_json_path = f"{local_env_path}/.devcontainer/devcontainer.json"
     with open(devcontainer_json_path, "w", encoding="utf-8") as f:
         f.write(devcontainer_json)
+
+def mount_data_drive(runtime: EzRuntime, ez: Ez, compute_name: str, 
+    mount: str):
 
     # Mount /data drive only if azure
     if mount == "azure":
@@ -549,6 +592,9 @@ WORKDIR /home/{ez.user_name}
         else:
             mount_path = f"/home/{ez.user_name}/data"
         mount_storage_account(runtime, compute_name, mount_path)
+
+def run_vscode(runtime: EzRuntime, ez: Ez, compute_name: str, 
+    env_name: str, local_env_path: str):
 
     # Launch the project by launching VS Code using "code .". In the future
     # this command will be replaced with "devcontainer open ." but because of
@@ -564,6 +610,26 @@ WORKDIR /home/{ez.user_name}
     ez.active_remote_compute = compute_name
     if compute_name != ".":
         ez.active_remote_compute_type = "vm"
+
+def __go(runtime: EzRuntime, ez: Ez, git_uri: str, compute_name: str, 
+    env_name: str, use_acr: bool=False, build: bool=False, mount: str="none",
+    patch_file: str=None):
+
+    local_env_path = clone_git_repo(git_uri, env_name)
+    ez_json = read_repo_config(local_env_path)
+    generate_dockerfile(ez, local_env_path, ez_json)
+    build_container(ez, local_env_path, env_name, compute_name, use_acr)
+
+    if compute_name != ".":
+        clone_remote_repo(runtime, ez, git_uri, compute_name, env_name, 
+            patch_file)
+
+    write_settings_json(ez, compute_name, local_env_path)
+    write_devcontainer_json(runtime, ez, compute_name, env_name, 
+        local_env_path, ez_json, use_acr, mount)
+
+    mount_data_drive(runtime, ez, compute_name, mount)
+    run_vscode(runtime, ez, compute_name, env_name, local_env_path)
 
 @click.command()
 @click.option("--git-uri", "-g", required=True, prompt="URI of GitHub repo",
